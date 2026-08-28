@@ -10,7 +10,11 @@ import { ComposerCard } from './components/composer/ComposerCard'
 import { ConversationView } from './components/conversation/ConversationView'
 import { useAppStore } from './store'
 import { openFolder, openSettings } from './bridge'
-import deepseekIconUrl from '../../resources/icon.svg?url'
+import deepseekIconSvg from '../../resources/icon.svg?raw'
+
+const deepseekIconDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(
+  deepseekIconSvg.replace('fill="none"', 'fill="black"')
+)}`
 
 export function App(): JSX.Element {
   const initialized = useAppStore((s) => s.initialized)
@@ -83,7 +87,18 @@ export function App(): JSX.Element {
       ) : activeSessionId === null ? (
         <section className="region region-conversation" data-region="ConversationView">
           <div className="empty-hero">
-            {initialized ? <span className="empty-deepseek-icon" style={{ WebkitMaskImage: `url(${deepseekIconUrl})`, maskImage: `url(${deepseekIconUrl})` }} aria-label="DeepSeek" /> : <div>{copy.loading}</div>}
+            {initialized ? (
+              <span
+                className="empty-deepseek-icon"
+                style={{
+                  WebkitMaskImage: `url("${deepseekIconDataUrl}")`,
+                  maskImage: `url("${deepseekIconDataUrl}")`,
+                }}
+                aria-label="DeepSeek"
+              />
+            ) : (
+              <div>{copy.loading}</div>
+            )}
           </div>
         </section>
       ) : (
