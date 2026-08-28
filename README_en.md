@@ -24,7 +24,7 @@ npm run package
 
 `test:e2e` uses an isolated `DSH_HOME` by default and does not copy user credentials, so the four test cases requiring a real model will be skipped. Only when a provider is configured in a throwaway test directory should `DSH_E2E_LIVE=1` be explicitly set to run these cases.
 
-The generated local VSIX is identified as `local.deepseek-harness-vscode`. The initial release targets desktop VS Code and does not support VS Code Web or remote network Hosts.
+The generated local VSIX is identified as `local.dsh-sidebar-on-vscode`. The initial release targets desktop VS Code and does not support VS Code Web or remote network Hosts.
 
 ### Settings
 

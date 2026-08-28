@@ -14,8 +14,8 @@ const EXPECTED_COMMANDS = [
 ]
 
 async function run() {
-  const extension = vscode.extensions.getExtension('local.deepseek-harness-vscode')
-  assert.ok(extension, 'extension local.deepseek-harness-vscode must be installed in the test host')
+  const extension = vscode.extensions.getExtension('local.dsh-sidebar-on-vscode')
+  assert.ok(extension, 'extension local.dsh-sidebar-on-vscode must be installed in the test host')
   await extension.activate()
   assert.equal(extension.isActive, true)
 

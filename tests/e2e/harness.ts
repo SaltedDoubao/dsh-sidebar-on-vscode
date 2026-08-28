@@ -101,7 +101,7 @@ export async function startHarness(): Promise<Harness> {
   // setup inside this disposable directory.
   process.env.DSH_HOME = tmpRoot
   stubWorkspace.workspaceFolders = [{
-    name: 'deepseek-harness-vscode',
+    name: 'dsh-sidebar-on-vscode',
     uri: { fsPath: workspacePath, toString: () => `file://${workspacePath.replaceAll('\\', '/')}` },
   }]
 

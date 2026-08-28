@@ -16,7 +16,7 @@ interface WindowLease {
 }
 
 interface HostOwnership {
-  marker: 'local.deepseek-harness-vscode'
+  marker: 'local.dsh-sidebar-on-vscode'
   instanceId: string
   pid: number
   port: number
@@ -45,7 +45,7 @@ export class HostLeaseCoordinator {
   async publishOwnedHost(info: HostInfo): Promise<void> {
     if (!info.spawnedByUs || info.pid === undefined) return
     const ownership: HostOwnership = {
-      marker: 'local.deepseek-harness-vscode',
+      marker: 'local.dsh-sidebar-on-vscode',
       instanceId: this.instanceId,
       pid: info.pid,
       port: info.port,
@@ -126,7 +126,7 @@ export class HostLeaseCoordinator {
   private async readOwnership(): Promise<HostOwnership | null> {
     try {
       const parsed = JSON.parse(await readFile(this.ownershipPath, 'utf8')) as Partial<HostOwnership>
-      if (parsed.marker !== 'local.deepseek-harness-vscode'
+      if (parsed.marker !== 'local.dsh-sidebar-on-vscode'
         || typeof parsed.instanceId !== 'string'
         || typeof parsed.pid !== 'number'
         || typeof parsed.port !== 'number'

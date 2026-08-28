@@ -24,7 +24,7 @@ npm run package
 
 `test:e2e` 默认使用隔离的 `DSH_HOME`，不会复制用户凭据，因此需要真实模型的四项用例会跳过。只有在一次性的测试目录内配置 provider 后，才应显式设置 `DSH_E2E_LIVE=1` 运行这些用例。
 
-生成的本地 VSIX 标识为 `local.deepseek-harness-vscode`。首版面向桌面版 VS Code，不支持 VS Code Web 或远程网络 Host。
+生成的本地 VSIX 标识为 `local.dsh-sidebar-on-vscode`。首版面向桌面版 VS Code，不支持 VS Code Web 或远程网络 Host。
 
 ### 设置
 
