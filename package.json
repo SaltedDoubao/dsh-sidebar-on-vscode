@@ -1,9 +1,9 @@
 {
   "name": "dsh-sidebar-on-vscode",
   "displayName": "DSH Sidebar on VSCode",
-  "description": "A secure, capability-aware VS Code client for DeepSeek Harness.",
+  "description": "An extension that enables you to use DSH in vscode sidebar",
   "version": "1.0.0",
-  "publisher": "local",
+  "publisher": "SaltedDoubao",
   "license": "MIT",
   "private": true,
   "repository": {
@@ -16,7 +16,15 @@
   },
   "categories": [
     "AI",
-    "Chat"
+    "Other"
+  ],
+  "tags": [
+    "agent",
+    "ai",
+    "deepseek",
+    "dsh",
+    "harness",
+    "keybindings"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [],
