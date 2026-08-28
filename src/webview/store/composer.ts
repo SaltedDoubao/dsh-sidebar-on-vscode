@@ -11,9 +11,10 @@ import type { MuxFrame } from '../../extension/protocol/events'
 import type { HostDescription } from '../../extension/protocol/host'
 import type { PromptContentPart, QueueAction } from '../../extension/protocol/sessions'
 import type { SessionModels } from '../../extension/protocol/sessions'
+import type { PermissionSelectProjection } from '../../extension/protocol/projections'
 import { fetchIdeContent, rpc, setIdeContext } from '../bridge'
 import { formatIdeInsert, hasIdeBlock } from '../ide-insert'
-import type { Attachment, ModelInfo, PermissionMode, QueuedMessage } from '../types'
+import type { Attachment, ModelInfo, QueuedMessage } from '../types'
 import type { AppStore } from './index'
 
 /** State + actions owned by the composer workflow. */
@@ -26,8 +27,12 @@ export interface ComposerSlice {
   selectedModel: SessionModels['current'] | null
   /** Model chosen before any session exists; applied on the next session create. */
   pendingModelSelection: { provider: string; model: string; reasoningEffort?: string } | null
-  /** Permission-mode selector value (UI-owned; see types.ts). */
-  permissionMode: PermissionMode
+  /** Host-computed permissions of the materialized active session. */
+  permissions: PermissionSelectProjection | null
+  /** Preset awaiting the host's authoritative projection update. */
+  permissionSwitchingTo: string | null
+  /** Last permission switch failure, rendered next to the selector. */
+  permissionError: string | null
   /** Whether send-time IDE context injection is enabled (toggle chip). */
   ideContextEnabled: boolean
 
@@ -37,7 +42,7 @@ export interface ComposerSlice {
   cancel: () => Promise<void>
   /** Change the model route; without a session the choice is stashed as pending. */
   selectModel: (provider: string, model: string, reasoningEffort?: string) => Promise<void>
-  setPermissionMode: (mode: PermissionMode) => Promise<void>
+  setPermissionPreset: (preset: string) => Promise<void>
   /** Toggle send-time IDE context injection (persisted as a VS Code setting). */
   setIdeContextEnabled: (enabled: boolean) => void
   /** Load the global model catalog (llm.models); session.models refines later. */
@@ -62,6 +67,20 @@ function toQueuedMessage(item: { id: MessageId; placement: QueuedMessage['placem
     .filter((t) => t !== '')
     .join('\n')
   return { id: item.id, placement: item.placement, text, message: item.message }
+}
+
+/** Reject malformed/legacy projection values instead of exposing a broken menu. */
+function permissionProjection(value: unknown): PermissionSelectProjection | null {
+  if (value === null || typeof value !== 'object') return null
+  const candidate = value as { currentValue?: unknown; options?: unknown }
+  if (typeof candidate.currentValue !== 'string' || !Array.isArray(candidate.options)) return null
+  const options = candidate.options.filter((option): option is PermissionSelectProjection['options'][number] => {
+    if (option === null || typeof option !== 'object') return false
+    const row = option as { value?: unknown; name?: unknown; description?: unknown }
+    return typeof row.value === 'string' && typeof row.name === 'string'
+      && (row.description === undefined || typeof row.description === 'string')
+  })
+  return { currentValue: candidate.currentValue, options }
 }
 
 /**
@@ -101,7 +120,9 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
   models: [],
   selectedModel: null,
   pendingModelSelection: null,
-  permissionMode: 'workspace-write',
+  permissions: null,
+  permissionSwitchingTo: null,
+  permissionError: null,
   ideContextEnabled: false,
 
   sendPrompt: async (text, attachments) => {
@@ -152,21 +173,27 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
     set({ selectedModel: selected })
   },
 
-  setPermissionMode: async (mode) => {
+  setPermissionPreset: async (preset) => {
     const sessionId = get().activeSessionId
-    if (sessionId === null) {
-      set({ permissionMode: mode })
-      return
+    if (sessionId === null || get().permissions === null || get().permissionSwitchingTo !== null) return
+    set({ permissionSwitchingTo: preset, permissionError: null })
+    try {
+      const result = await rpc<{ accepted: true; command?: { kind: 'success'; text?: string } }>('session.prompt', {
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: `/permission ${preset}` }],
+        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
+      if (result.command === undefined) throw new Error(get().uiPrefs.language === 'zh' ? '当前主机未识别权限命令。' : 'The host did not recognize the permission command.')
+      // Do not update the selection optimistically. The pushed permissions
+      // projection below is the authoritative confirmation.
+    } catch (error) {
+      set({
+        permissionSwitchingTo: null,
+        permissionError: error instanceof Error ? error.message : String(error),
+      })
+      throw error
     }
-    // Permission switching is a Host command. The authoritative
-    // `permissions` projection below confirms and displays the new value.
-    const preset = mode === 'full-access' ? 'danger-full-access' : mode
-    await rpc('session.prompt', {
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: `/permission ${preset}` }],
-      clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    })
   },
 
   setIdeContextEnabled: (enabled) => {
@@ -222,12 +249,7 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
 
   applyQueueFrame: (frame) => {
     if (frame.type === 'session/projection' && frame.sessionId === get().activeSessionId && frame.key === 'permissions') {
-      const currentValue = (frame.value as { currentValue?: unknown } | null)?.currentValue
-      if (currentValue === 'read-only' || currentValue === 'workspace-write') {
-        set({ permissionMode: currentValue })
-      } else if (currentValue === 'danger-full-access' || currentValue === 'full-access') {
-        set({ permissionMode: 'full-access' })
-      }
+      set({ permissions: permissionProjection(frame.value), permissionSwitchingTo: null, permissionError: null })
       return
     }
     if (frame.type !== 'session/queue') return

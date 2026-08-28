@@ -1,8 +1,8 @@
 /**
  * Mock bridge client (implements the BridgeClient surface of ../api.ts).
  * Lets W2-W6 develop without a dsh host: 30 fake sessions, one demo session
- * with a scripted history (reasoning + tool call + todos), a four-key
- * projection baseline (sessionStats/tokenUsage/contextPressure/contextBreakdown)
+ * with a scripted history (reasoning + tool call + todos), a five-key
+ * projection baseline (stats/token/context/permissions)
  * and a scripted live stream (prompt -> text -> tool call -> approval ->
  * question -> done), plus a two-provider model catalog and the
  * settings/credentials/agentPreset surface (namespaces, custom providers,
@@ -21,16 +21,17 @@ import type {
 import type {
   ContextBreakdownProjection,
   ContextPressureProjection,
+  PermissionSelectProjection,
   SessionStatsProjection,
   TokenUsageProjection,
 } from '../../extension/protocol/projections'
 import type { SessionEvent } from '../../extension/protocol/session'
 import type { HistoryEntry, QueueAction, SessionModels, SessionSummary } from '../../extension/protocol/sessions'
-import type { JobView, SkillEntry } from '../../extension/protocol/views'
+import type { JobView, SkillEntry, WorkspaceView } from '../../extension/protocol/views'
 import type { GoalProjection, GoalRef } from '../../extension/protocol/goals'
 import type { SettingsNamespaceView } from '../../extension/protocol/settings'
 import type { ConfigurableProviderView } from '../../extension/protocol/settings'
-import type { HostStatus, IdeContentKind, IdeContentPayload, InitPayload, SessionMeta } from '../../shared/bridge'
+import type { HostStatus, IdeContentKind, IdeContentPayload, IdeContextMeta, InitPayload, SessionMeta, SettingsInitPayload } from '../../shared/bridge'
 import type { UiRequest } from '../../shared/ui-requests'
 import type { BridgeClient } from '../api'
 
@@ -88,6 +89,15 @@ function buildSessions(): SessionMeta[] {
 
 const sessions: SessionMeta[] = buildSessions()
 const archived = new Set<SessionId>()
+const mockWorkspace: WorkspaceView = {
+  workspaceId: 'ws-mock' as WorkspaceId,
+  path: MOCK_CWD,
+  title: 'mock-workspace',
+  sessionIds: sessions.map((session) => session.sessionId),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+}
+const workspaces: WorkspaceView[] = [mockWorkspace]
 
 /**
  * Projection baseline served with the demo session's history tail page. The
@@ -101,6 +111,7 @@ const DEMO_PROJECTIONS: {
   tokenUsage: TokenUsageProjection
   contextPressure: ContextPressureProjection
   contextBreakdown: ContextBreakdownProjection
+  permissions: PermissionSelectProjection
 } = {
   sessionStats: {
     turns: 1,
@@ -120,6 +131,14 @@ const DEMO_PROJECTIONS: {
   },
   contextPressure: { pressureTokens: 57_600, projectedTokens: 57_600, contextWindow: 128_000 },
   contextBreakdown: { systemTokens: 12_800, toolsTokens: 8_600, messageTokens: 36_200 },
+  permissions: {
+    currentValue: 'workspace-write',
+    options: [
+      { value: 'read-only', name: 'read-only', description: '只读，不修改工作区文件' },
+      { value: 'workspace-write', name: 'workspace-write', description: '允许修改工作区文件' },
+      { value: 'danger-full-access', name: 'danger-full-access', description: '允许直接执行敏感操作' },
+    ],
+  },
 }
 
 let seq = 100
@@ -489,8 +508,10 @@ export const mockGoalRpcLog: Array<{ method: string; params: Record<string, unkn
 type EventListener = (channel: 'mux' | 'host', frame: unknown) => void
 const eventListeners = new Set<EventListener>()
 const statusListeners = new Set<(status: HostStatus) => void>()
-const commandListeners = new Set<(command: 'newChat' | 'openSettings' | 'exportSession') => void>()
+const commandListeners = new Set<(command: 'newChat' | 'exportSession') => void>()
+const settingsRefreshListeners = new Set<() => void>()
 const ideContentListeners = new Set<(content: IdeContentPayload) => void>()
+const ideContextListeners = new Set<(context: IdeContextMeta | null) => void>()
 
 /** Emit one frame to every event listener, asynchronously (mirrors WS delivery). */
 function emit(channel: 'mux' | 'host', frame: MuxFrame | HostFrame, delayMs = 0): void {
@@ -505,6 +526,10 @@ function emit(channel: 'mux' | 'host', frame: MuxFrame | HostFrame, delayMs = 0)
  */
 export function mockEmitIdeContent(content: IdeContentPayload): void {
   for (const cb of ideContentListeners) cb(content)
+}
+
+export function mockEmitIdeContext(content: IdeContextMeta | null): void {
+  for (const cb of ideContextListeners) cb(content)
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +648,8 @@ function waitInit(): Promise<InitPayload> {
     hostVersion: '0.1.1-mock',
     vscodeLanguage: 'zh-cn',
     sessions: sessions.filter((s) => !archived.has(s.sessionId)),
+    workspaces: workspaces.map((workspace) => ({ ...workspace, sessionIds: [...workspace.sessionIds] })),
+    archivedSessionIds: [...archived],
     workspaceRoots: [{ uri: 'file:///mock/workspace', name: 'Mock Workspace', path: MOCK_CWD }],
     selectedWorkspaceUri: 'file:///mock/workspace',
     capabilities: {
@@ -633,6 +660,11 @@ function waitInit(): Promise<InitPayload> {
     },
     ideContextEnabled: false,
   })
+}
+
+async function waitSettingsInit(): Promise<SettingsInitPayload> {
+  const init = await waitInit()
+  return { hostVersion: init.hostVersion, vscodeLanguage: init.vscodeLanguage, capabilities: init.capabilities }
 }
 
 /** Mock rpc: dispatch on the method name over the fake data above. */
@@ -660,21 +692,16 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
       return respond({ items })
     }
     case 'workspace.create': {
-      // Idempotent per-path workspace resolution; the mock owns one workspace.
-      const workspace = {
-        workspaceId: 'ws-mock' as WorkspaceId,
-        path: MOCK_CWD,
-        title: 'mock-workspace',
-        sessionIds: sessions.map((s) => s.sessionId),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
+      const workspace = workspaces.find((item) => item.path === p['path']) ?? mockWorkspace
       return respond({ workspace, created: false })
     }
     case 'session.create': {
       const sessionId = `s-new-${Date.now()}` as SessionId
       sessions.unshift({ sessionId, title: null, updatedAt: Date.now(), running: false, blank: true, cwd: MOCK_CWD })
+      const workspace = workspaces.find((item) => item.workspaceId === p['workspaceId']) ?? mockWorkspace
+      workspace.sessionIds.unshift(sessionId)
       emit('host', { type: 'host/session-added', sessionId, blank: true, cwd: MOCK_CWD })
+      emit('host', { type: 'host/workspace-changed', workspace: { ...workspace, sessionIds: [...workspace.sessionIds] } })
       return respond({ sessionId })
     }
     case 'session.history': {
@@ -796,6 +823,13 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
         return respond({ accepted: true })
       }
       const text = content.find((c) => c.type === 'text')?.text ?? ''
+      if (text.startsWith('/permission ')) {
+        const preset = text.slice('/permission '.length).trim()
+        if (!DEMO_PROJECTIONS.permissions.options.some((option) => option.value === preset)) return respond({ accepted: true })
+        DEMO_PROJECTIONS.permissions = { ...DEMO_PROJECTIONS.permissions, currentValue: preset }
+        emit('mux', { type: 'session/projection', sessionId, key: 'permissions', value: DEMO_PROJECTIONS.permissions, seq }, 20)
+        return respond({ accepted: true, command: { kind: 'success', text: preset } })
+      }
       if (sessionId === DEMO_SESSION_ID) runDemoStream(sessionId, text)
       else emit('mux', { type: 'session/event', sessionId, event: ev('turn/start', { turn: 1 }) }, 100)
       return respond({ accepted: true })
@@ -839,8 +873,48 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
       emit('host', { type: 'host/archived-sessions-changed', archivedSessionIds: [...archived] })
       return respond({ archivedSessionIds: [...archived] })
     }
+    case 'workspace.rename': {
+      const workspace = workspaces.find((item) => item.workspaceId === p['workspaceId'])
+      if (workspace === undefined) return Promise.reject(new Error('mock bridge: unknown workspace'))
+      workspace.title = String(p['title'])
+      workspace.updatedAt = new Date().toISOString()
+      emit('host', { type: 'host/workspace-changed', workspace: { ...workspace, sessionIds: [...workspace.sessionIds] } })
+      return respond({ workspace })
+    }
+    case 'workspace.delete': {
+      const index = workspaces.findIndex((item) => item.workspaceId === p['workspaceId'])
+      if (index === -1) return Promise.reject(new Error('mock bridge: unknown workspace'))
+      const removed = workspaces.splice(index, 1)[0]!
+      emit('host', { type: 'host/workspace-removed', workspaceId: removed.workspaceId })
+      return respond({ deleted: true })
+    }
+    case 'workspace.insertBefore': {
+      const from = workspaces.findIndex((item) => item.workspaceId === p['workspaceId'])
+      if (from === -1) return Promise.reject(new Error('mock bridge: unknown workspace'))
+      const workspace = workspaces.splice(from, 1)[0]!
+      const target = p['beforeWorkspaceId'] === undefined
+        ? workspaces.length
+        : workspaces.findIndex((item) => item.workspaceId === p['beforeWorkspaceId'])
+      workspaces.splice(target < 0 ? workspaces.length : target, 0, workspace)
+      const workspaceIds = workspaces.map((item) => item.workspaceId)
+      emit('host', { type: 'host/workspace-order-changed', workspaceIds })
+      return respond({ workspaceIds })
+    }
+    case 'workspace.insertSessionBefore': {
+      const workspace = workspaces.find((item) => item.workspaceId === p['workspaceId'])
+      if (workspace === undefined) return Promise.reject(new Error('mock bridge: unknown workspace'))
+      workspace.sessionIds = workspace.sessionIds.filter((id) => id !== p['sessionId'])
+      const target = p['beforeSessionId'] === undefined
+        ? workspace.sessionIds.length
+        : workspace.sessionIds.indexOf(p['beforeSessionId'] as SessionId)
+      workspace.sessionIds.splice(target < 0 ? workspace.sessionIds.length : target, 0, p['sessionId'] as SessionId)
+      emit('host', { type: 'host/workspace-changed', workspace: { ...workspace, sessionIds: [...workspace.sessionIds] } })
+      return respond({ workspace })
+    }
     case 'settings.describe':
       return respond({ writable: true, hasDocument: true, namespaces: [...namespaces.values()] })
+    case 'settings.openDocument':
+      return respond({ opened: true })
     case 'settings.update': {
       const ns = namespaces.get(String(p['ns']))
       if (!ns) return Promise.reject(new Error(`mock bridge: unknown settings ns ${String(p['ns'])}`))
@@ -934,7 +1008,7 @@ function onHostStatus(cb: (status: HostStatus) => void): () => void {
   return () => statusListeners.delete(cb)
 }
 
-function onCommand(cb: (command: 'newChat' | 'openSettings' | 'exportSession') => void): () => void {
+function onCommand(cb: (command: 'newChat' | 'exportSession') => void): () => void {
   commandListeners.add(cb)
   return () => commandListeners.delete(cb)
 }
@@ -950,6 +1024,14 @@ function openFile(_path: string): void {}
 function openExternal(_href: string): void {}
 function setIdeContext(_enabled: boolean): void {}
 function setActiveSession(_sessionId: SessionId | null): void {}
+function onSettingsRefresh(cb: () => void): () => void {
+  settingsRefreshListeners.add(cb)
+  return () => settingsRefreshListeners.delete(cb)
+}
+function onSettingsInit(_cb: (payload: SettingsInitPayload) => void): () => void { return () => undefined }
+function onSettingsInitError(_cb: (error: string) => void): () => void { return () => undefined }
+function openSettings(): void {}
+function closeSettings(): void {}
 
 /** Mock ide-content subscription (deliveries come via mockEmitIdeContent). */
 function onIdeContent(cb: (content: IdeContentPayload) => void): () => void {
@@ -966,6 +1048,18 @@ function requestIdeContent(_kind: IdeContentKind): void {
  * skipped (the send path treats the error payload as "nothing to inject"). */
 function fetchIdeContent(kind: IdeContentKind): Promise<IdeContentPayload> {
   return Promise.resolve({ kind, text: '', error: 'mock: 无编辑器' })
+}
+
+function onIdeContextMeta(cb: (context: IdeContextMeta | null) => void): () => void {
+  ideContextListeners.add(cb)
+  return () => ideContextListeners.delete(cb)
+}
+
+function requestIdeContextMeta(): void {}
+
+async function addWorkspace(): Promise<{ canceled: boolean; sessionId?: SessionId; payload?: InitPayload }> {
+  const created = await rpc<{ sessionId: SessionId }>('session.create', { workspaceId: mockWorkspace.workspaceId })
+  return { canceled: false, sessionId: created.sessionId, payload: await waitInit() }
 }
 
 /** Mock approval answer: resolves the scripted pending approval and continues the stream. */
@@ -1027,5 +1121,7 @@ function respondQuestion(sessionId: SessionId, answers: AskUserQuestionAnswerIte
 export const mockBridge: BridgeClient = {
   rpc, onEvent, onHostStatus, onCommand, onWorkspaceChanged, waitInit,
   respondApproval, respondQuestion, onIdeContent, requestIdeContent, fetchIdeContent,
+  onIdeContextMeta, requestIdeContextMeta, addWorkspace,
   selectWorkspace, openFolder, exportSession, openFile, openExternal, setIdeContext, setActiveSession,
+  waitSettingsInit, onSettingsInit, onSettingsRefresh, onSettingsInitError, openSettings, closeSettings,
 }

@@ -232,8 +232,8 @@ export interface ModelInfo {
 
 /**
  * Permission mode selector value (UI-owned concept; the dsh protocol has no
- * per-message permission field — the mode gates which tools need approval on
- * the agent side and is a host-level setting).
+ * per-message permission field — this type is retained for the new-session
+ * default in Settings; current sessions use the dynamic permissions projection.
  */
 export type PermissionMode = 'read-only' | 'workspace-write' | 'full-access'
 

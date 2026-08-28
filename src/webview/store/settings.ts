@@ -1,6 +1,6 @@
 /**
- * Settings slice (owned by W6). Settings modal visibility plus the
- * settings/credentials/llm/agentPreset RPC read-write surface. Namespace values
+ * Settings slice: settings/credentials/llm/agentPreset RPC read-write surface.
+ * Namespace values
  * are always redacted wire views; secrets are write-only via credentials.*.
  * Contract: ARCHITECTURE.md section 5.2 (extended for W6 with presets,
  * credential states, settings.mutate, provider removal and UI preferences).
@@ -161,7 +161,9 @@ export interface ProviderTarget {
 
 /** State + actions owned by the settings workflow. */
 export interface SettingsSlice {
-  settingsOpen: boolean
+  settingsHasDocument: boolean
+  settingsLoading: boolean
+  settingsError: string | null
   /** Redacted namespace wire views, keyed load from settings.describe. */
   namespaces: SettingsNamespaceView[]
   /** Configurable providers (llm.providers). */
@@ -182,10 +184,9 @@ export interface SettingsSlice {
   /** Per-preference persistence target (settings namespace or localStorage). */
   uiPrefSources: Record<keyof UiPrefs, UiPrefSource>
 
-  openSettings: () => void
-  closeSettings: () => void
-  /** Load namespaces + providers + credentials + presets (modal open). */
+  /** Load namespaces + providers + credentials + presets. */
   loadSettings: () => Promise<void>
+  openSettingsDocument: () => Promise<void>
   /** Merge a patch into one namespace; optimistic concurrency via revision. */
   updateSettings: (ns: string, patch: object, expectedRevision?: number) => Promise<void>
   /** Path-addressed edits against one namespace (settings.mutate). */
@@ -211,7 +212,9 @@ export interface SettingsSlice {
 }
 
 export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> = (set, get) => ({
-  settingsOpen: false,
+  settingsHasDocument: false,
+  settingsLoading: false,
+  settingsError: null,
   namespaces: [],
   providers: [],
   settingsWritable: false,
@@ -224,13 +227,9 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   uiPrefs: { ...DEFAULT_UI_PREFS },
   uiPrefSources: { language: 'local', appearance: 'local', busyEnter: 'local', permissionMode: 'local' },
 
-  openSettings: () => {
-    set({ settingsOpen: true })
-    void get().loadSettings()
-  },
-  closeSettings: () => set({ settingsOpen: false }),
-
   loadSettings: async () => {
+    set({ settingsLoading: true, settingsError: null })
+    try {
     const capabilities = get().capabilities
     const described = capabilities?.settings === false
       ? { writable: false, hasDocument: false, namespaces: [] }
@@ -275,6 +274,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
     }
     set({
       namespaces: described.namespaces,
+      settingsHasDocument: described.hasDocument,
       settingsWritable: described.writable,
       providers: providers.providers,
       credentials: credentialViews.credentials,
@@ -285,7 +285,17 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
       defaultPresetId: roster.presets.find((p) => p.isDefault)?.id ?? roster.presets[0]?.id ?? '',
       uiPrefs,
       uiPrefSources,
+      settingsLoading: false,
     })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      set({ settingsLoading: false, settingsError: message })
+      throw error
+    }
+  },
+
+  openSettingsDocument: async () => {
+    await rpc('settings.openDocument', {})
   },
 
   updateSettings: async (ns, patch, expectedRevision) => {
@@ -320,8 +330,6 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
     const binding = UI_PREF_BINDINGS[key]
     const next = { ...get().uiPrefs, [key]: value }
     set({ uiPrefs: next })
-    // The composer's permission chip mirrors the saved default.
-    if (key === 'permissionMode') set({ permissionMode: value as PermissionMode })
     if (get().uiPrefSources[key] === 'settings') {
       const ns = get().namespaces.find((n) => n.ns === binding.ns)
       await get().updateSettings(binding.ns, { [binding.field]: binding.toWire(value) }, ns?.revision)
@@ -346,7 +354,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
     }
     mode ??= readLocalPrefs().permissionMode
     if (mode === undefined) return
-    set({ uiPrefs: { ...get().uiPrefs, permissionMode: mode }, permissionMode: mode })
+    set({ uiPrefs: { ...get().uiPrefs, permissionMode: mode } })
   },
 
   selectDefaultPreset: async (id) => {

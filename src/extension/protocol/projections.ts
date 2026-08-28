@@ -64,3 +64,16 @@ export interface ContextBreakdownProjection {
   toolsTokens: number
   messageTokens: number
 }
+
+/** One host-advertised permission preset in the `permissions` projection. */
+export interface PermissionPresetOption {
+  value: string
+  name: string
+  description?: string
+}
+
+/** Current permission state and every preset switchable on this host. */
+export interface PermissionSelectProjection {
+  options: PermissionPresetOption[]
+  currentValue: string
+}

@@ -27,9 +27,24 @@
   border-radius: 16px;
 }
 
+/* Menus open upward across the preceding Goal/Todo siblings. Elevate the
+   card only while keyboard/pointer focus is inside it, avoiding a permanent
+   stacking layer over conversation overlays. */
+.composer-card:focus-within {
+  z-index: 10;
+}
+
 .composer-card.drag-active {
   border-color: var(--dsh-accent);
 }
+
+.composer-context-row { display:flex; align-items:center; min-height:24px; padding:0 2px; }
+.composer-context-chip,.composer-context-add { display:inline-flex; align-items:center; gap:5px; max-width:100%; min-height:24px; padding:2px 6px; color:var(--dsh-fg-muted); background:var(--vscode-chat-slashCommandBackground,var(--vscode-list-hoverBackground,rgba(255,255,255,.06))); border:1px solid var(--dsh-border); border-radius:5px; font-size:.82em; }
+.composer-context-chip > span { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--dsh-fg); }
+.composer-context-chip small { flex:none; color:var(--dsh-fg-muted); font-size:inherit; }
+.composer-context-chip button { flex:none; display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; padding:0; color:var(--dsh-fg-muted); background:transparent; border-radius:3px; }
+.composer-context-chip button:hover,.composer-context-add:hover { color:var(--dsh-fg); background:var(--vscode-list-hoverBackground,rgba(255,255,255,.1)); }
+.composer-context-add { background:transparent; cursor:pointer; }
 
 .composer-drop-overlay {
   position: absolute;
@@ -242,6 +257,49 @@
   left: 0;
 }
 
+.permission-menu-portal {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 60;
+  min-width: 260px;
+}
+
+.permission-trigger-icon,
+.permission-option-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.permission-trigger-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.permission-option-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.permission-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.permission-chevron.open {
+  transform: rotate(180deg);
+}
+
+.permission-error {
+  max-width: 260px;
+  padding: 6px 8px;
+  color: var(--dsh-danger);
+  font-size: .85em;
+  line-height: 1.4;
+}
+
 .model-select .composer-menu {
   right: 0;
 }
@@ -401,15 +459,27 @@
 /* --- context meter --- */
 
 .context-meter {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
 }
 
-.context-meter-pct {
-  font-size: 0.75em;
+.context-meter-trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
   color: var(--dsh-fg-muted);
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.context-meter-trigger:hover {
+  color: var(--dsh-fg);
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,.06));
 }
 
 .context-meter-track {
@@ -426,6 +496,100 @@
   stroke: var(--dsh-fg);
   stroke-width: 2;
   stroke-linecap: round;
+}
+
+.context-meter-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 12;
+  box-sizing: border-box;
+  width: 264px;
+  padding: 12px;
+  color: var(--dsh-fg-muted);
+  background: var(--dsh-bg-raised);
+  border: 1px solid var(--dsh-border);
+  border-radius: 12px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,.38);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.context-meter-panel-portal {
+  position: fixed;
+  top: auto;
+  left: auto;
+  z-index: 60;
+}
+
+.context-meter-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-meter-header strong,
+.context-meter-figures {
+  color: var(--dsh-fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-meter-figures {
+  margin-left: auto;
+}
+
+.context-meter-bar {
+  display: flex;
+  gap: 1px;
+  height: 4px;
+  margin: 10px 0 12px;
+  overflow: hidden;
+  background: var(--vscode-list-hoverBackground, rgba(255,255,255,.08));
+  border-radius: 999px;
+}
+
+.context-meter-segment {
+  flex: none;
+  min-width: 2px;
+  height: 100%;
+  background: var(--dsh-fg-muted);
+  border-radius: 1px;
+}
+
+.context-meter-system { background: var(--vscode-descriptionForeground, #a0a0a0); }
+.context-meter-tools { background: var(--vscode-charts-purple, #a78bfa); }
+.context-meter-messages { background: var(--vscode-charts-blue, #5794f2); }
+
+.context-meter-rows {
+  margin: 6px 0 0;
+}
+
+.context-meter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.context-meter-row dt {
+  color: var(--dsh-fg-muted);
+}
+
+.context-meter-row dd {
+  margin: 0;
+  color: var(--dsh-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-meter-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: baseline;
 }
 
 /* --- primary send/stop button --- */
@@ -750,7 +914,7 @@
    visible until the row genuinely no longer fits. */
 
 @media (max-width: 460px) {
-  [data-composer-tool='permission'] {
+  .permission-trigger .composer-chip-label {
     display: none;
   }
 }
@@ -785,14 +949,5 @@
   .stats-line {
     white-space: normal;
     line-height: 1.4;
-  }
-}
-
-/* The ring keeps its icon on narrow panels but drops the percentage text
-   (still on the ring's title tooltip): ~31px saved, enough for the full
-   toolbar to fit at the 460px permission breakpoint. */
-@media (max-width: 480px) {
-  .context-meter-pct {
-    display: none;
   }
 }

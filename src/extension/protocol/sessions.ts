@@ -13,6 +13,7 @@ import type { ContentBlock, ImageAttachmentLimits, ImageAttachmentRef, ImageMedi
 import type {
   ContextBreakdownProjection,
   ContextPressureProjection,
+  PermissionSelectProjection,
   SessionStatsProjection,
   TokenUsageProjection,
 } from './projections'
@@ -45,6 +46,8 @@ export interface SessionProjectionValues {
   contextPressure?: ContextPressureProjection
   /** Heuristic context composition (token-meter unit). */
   contextBreakdown?: ContextBreakdownProjection
+  /** Host-computed current permission and dynamically available presets. */
+  permissions?: PermissionSelectProjection
   /** Current goal projection; null is the durable clear/pre-create tombstone. */
   goal?: GoalProjection | null
   [key: string]: unknown

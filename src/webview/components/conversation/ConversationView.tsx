@@ -130,11 +130,12 @@ function TurnStatsRow(): JSX.Element | null {
   const stats = useAppStore((s) => s.stats)
   const lastTurnMs = useAppStore((s) => s.lastTurnMs)
   const turnStatus = useAppStore((s) => s.turnStatus)
+  const zh = useAppStore((s) => s.uiPrefs.language === 'zh')
   if (turnStatus !== 'idle' || stats === null) return null
   const parts: string[] = []
-  if (lastTurnMs !== null) parts.push(`Ran for ${formatDuration(lastTurnMs)}`)
-  parts.push(`输入 ${stats.inputTokens} tok`)
-  parts.push(`输出 ${stats.outputTokens} tok`)
+  if (lastTurnMs !== null) parts.push(`${zh ? '运行耗时' : 'Ran for'} ${formatDuration(lastTurnMs)}`)
+  parts.push(`${zh ? '输入' : 'Input'} ${stats.inputTokens} tok`)
+  parts.push(`${zh ? '输出' : 'Output'} ${stats.outputTokens} tok`)
   return <div className="turn-stats-row">{parts.join(' · ')}</div>
 }
 

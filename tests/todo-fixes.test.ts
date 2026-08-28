@@ -2,14 +2,14 @@
  * Regression tests for the five TODO items:
  *   1. IDE content insertion formatting (pure helpers).
  *   2. askuserquestion replay after the webview is recreated (overlay store).
- *   3. Cross-workspace session isolation (host/session-added cwd guard).
+ *   3. Complete dsh Workspace/session navigation state.
  *   4. Sessions move to the top after the user sends a message.
  *   5. A background-running session resumes its turn timer on re-entry.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { ApprovalRequestId, MessageId, SessionId } from '../src/extension/protocol/brand'
+import type { ApprovalRequestId, MessageId, SessionId, WorkspaceId } from '../src/extension/protocol/brand'
 import type { AskUserQuestionItem } from '../src/extension/protocol/events'
 import type { SessionMeta } from '../src/webview/types'
 import { formatIdeInsert, languageFromPath } from '../src/webview/ide-insert'
@@ -83,13 +83,13 @@ test('languageFromPath maps known extensions and ignores unknown ones', () => {
 // ③ Cross-workspace isolation + ④ session-to-top (sessions slice)
 // ---------------------------------------------------------------------------
 
-test('host/session-added from another workspace is ignored; same-cwd rows enter', async () => {
+test('host/session-added accepts all dsh workspaces and deduplicates repeated frames', async () => {
   const { useAppStore } = await import('../src/webview/store')
   const state = useAppStore.getState()
   useAppStore.setState({ cwd: MOCK_CWD, sessions: [meta(a, 3)], activeSessionId: null })
 
   state.applyHostFrame({ type: 'host/session-added', sessionId: b, blank: true, cwd: '/other/workspace' })
-  assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [a])
+  assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [b, a])
 
   state.applyHostFrame({ type: 'host/session-added', sessionId: b, blank: true, cwd: MOCK_CWD })
   assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [b, a])
@@ -99,7 +99,7 @@ test('host/session-added from another workspace is ignored; same-cwd rows enter'
   assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [c, b, a])
 })
 
-test('initSessions keeps only rows of the canonical workspace cwd', async () => {
+test('initSessions trusts the bridge workspace baseline and does not re-filter cwd', async () => {
   const { useAppStore } = await import('../src/webview/store')
   const state = useAppStore.getState()
   const rows = [
@@ -107,8 +107,94 @@ test('initSessions keeps only rows of the canonical workspace cwd', async () => 
     meta(b, 2, { cwd: '/other/workspace' }),
     meta(c, 3), // legacy cwd-less row stays visible
   ]
-  state.initSessions(rows, MOCK_CWD)
-  assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [c, a])
+  state.initSessions(rows)
+  assert.deepEqual(useAppStore.getState().sessions.map((s) => s.sessionId), [c, b, a])
+})
+
+test('workspace baselines and live frames preserve durable grouping/order and archives', async () => {
+  const { useAppStore } = await import('../src/webview/store')
+  const wsA = 'ws-a' as WorkspaceId
+  const wsB = 'ws-b' as WorkspaceId
+  const workspace = (workspaceId: WorkspaceId, sessionIds: SessionId[]) => ({
+    workspaceId, path: `/work/${workspaceId}`, title: workspaceId, sessionIds,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  })
+  const state = useAppStore.getState()
+  state.initSessions([meta(a, 3), meta(b, 2), meta(c, 1)])
+  state.initWorkspaces([workspace(wsA, [a]), workspace(wsB, [b])], [c])
+  assert.deepEqual(useAppStore.getState().sessions.map((session) => session.sessionId), [a, b])
+  assert.deepEqual(useAppStore.getState().workspaces.map((item) => item.workspaceId), [wsA, wsB])
+
+  state.applyHostFrame({ type: 'host/workspace-order-changed', workspaceIds: [wsB, wsA] })
+  assert.deepEqual(useAppStore.getState().workspaces.map((item) => item.workspaceId), [wsB, wsA])
+  state.applyHostFrame({ type: 'host/workspace-removed', workspaceId: wsB })
+  assert.deepEqual(useAppStore.getState().workspaces.map((item) => item.workspaceId), [wsA])
+})
+
+test('StatsLine session groups localize every bottom-bar label', async () => {
+  const { statsGroups } = await import('../src/webview/components/composer/StatsLine')
+  const projection = { turns: 2, steps: 3, llmMs: 1_000, toolMs: 500, ttftMs: 250, ttftSteps: 1, decodeMs: 1_000, decodeTokens: 20 }
+  assert.deepEqual(statsGroups(projection, true), [
+    '2 轮次 · 3 步骤', '模型耗时 1s · 工具调用 0.5s', '首字延迟均值 0.3s · 20 tok/s',
+  ])
+  assert.match(statsGroups(projection, false).join(' | '), /2 turns.*Tool call.*TTFT avg/)
+})
+
+test('context meter uses projected pressure and derives stable panel segments', async () => {
+  const { contextSegments, contextTooltip, contextUsage } = await import('../src/webview/components/composer/context-meter-model')
+  assert.equal(contextUsage(null), null)
+  assert.equal(contextUsage({ pressureTokens: 10 }), null)
+  assert.deepEqual(contextUsage({ pressureTokens: 32_000, projectedTokens: 3_000, contextWindow: 128_000 }), {
+    usedTokens: 3_000,
+    contextWindow: 128_000,
+    percent: 2,
+  })
+  assert.equal(contextUsage({ pressureTokens: 150_000, contextWindow: 128_000 })?.percent, 100)
+  assert.equal(contextTooltip(25, true), '上下文已用: 25%')
+  assert.equal(contextTooltip(25, false), 'Context used: 25%')
+  assert.deepEqual(contextSegments(0, { systemTokens: 1, toolsTokens: 1, messageTokens: 1 }), [])
+  assert.deepEqual(contextSegments(25, null), [{ key: 'total', color: '', width: 25 }])
+  const parts = contextSegments(40, { systemTokens: 10, toolsTokens: 20, messageTokens: 10 })
+  assert.equal(parts.length, 3)
+  assert.equal(parts.reduce((sum, part) => sum + part.width, 0), 40)
+})
+
+test('permissions install from history and live projections, then clear with the session', async () => {
+  const { useAppStore } = await import('../src/webview/store')
+  const { DEMO_SESSION_ID } = await import('../src/webview/mock/bridge')
+  useAppStore.setState({ activeSessionId: DEMO_SESSION_ID, sessions: [meta(DEMO_SESSION_ID, Date.now())] })
+  await useAppStore.getState().loadHistory(DEMO_SESSION_ID)
+  assert.equal(useAppStore.getState().permissions?.currentValue, 'workspace-write')
+  assert.deepEqual(useAppStore.getState().permissions?.options.map((option) => option.value), ['read-only', 'workspace-write', 'danger-full-access'])
+
+  useAppStore.getState().applyQueueFrame({
+    type: 'session/projection', sessionId: DEMO_SESSION_ID, key: 'permissions', seq: 9,
+    value: { currentValue: 'custom', options: [{ value: 'custom', name: 'Custom policy' }, { value: 'safe', name: 'Safe' }] },
+  })
+  assert.equal(useAppStore.getState().permissions?.currentValue, 'custom')
+  assert.equal(useAppStore.getState().permissionSwitchingTo, null)
+  useAppStore.getState().clearConversation()
+  assert.equal(useAppStore.getState().permissions, null)
+})
+
+test('permission switches wait for the host projection and retain errors', async () => {
+  const { useAppStore } = await import('../src/webview/store')
+  const permissions = {
+    currentValue: 'workspace-write',
+    options: [{ value: 'read-only', name: 'read-only' }, { value: 'workspace-write', name: 'workspace-write' }],
+  }
+  useAppStore.setState({ activeSessionId: a, permissions, permissionSwitchingTo: null, permissionError: null })
+  await useAppStore.getState().setPermissionPreset('read-only')
+  assert.equal(useAppStore.getState().permissions?.currentValue, 'workspace-write')
+  assert.equal(useAppStore.getState().permissionSwitchingTo, 'read-only')
+  useAppStore.getState().applyQueueFrame({ type: 'session/projection', sessionId: a, key: 'permissions', seq: 10, value: { ...permissions, currentValue: 'read-only' } })
+  assert.equal(useAppStore.getState().permissions?.currentValue, 'read-only')
+  assert.equal(useAppStore.getState().permissionSwitchingTo, null)
+
+  useAppStore.setState({ permissions: { currentValue: 'read-only', options: [{ value: 'unknown-preset', name: 'Unknown' }] } })
+  await assert.rejects(useAppStore.getState().setPermissionPreset('unknown-preset'), /未识别权限命令|did not recognize/)
+  assert.equal(useAppStore.getState().permissionSwitchingTo, null)
+  assert.match(useAppStore.getState().permissionError ?? '', /未识别权限命令|did not recognize/)
 })
 
 test('sending a message moves the session to the top of the list', async () => {

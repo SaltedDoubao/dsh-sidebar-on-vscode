@@ -14,15 +14,25 @@ export interface StubTextEditor {
     getText(selection?: unknown): string
     uri: { fsPath: string }
   }
-  selection: { isEmpty: boolean }
+  selection: { isEmpty: boolean; start?: { line: number }; end?: { line: number } }
 }
 
 const errorMessages: string[] = []
 const warningMessages: string[] = []
+const activeEditorListeners = new Set<(editor: StubTextEditor | undefined) => void>()
+const selectionListeners = new Set<(event: { textEditor: StubTextEditor }) => void>()
 
 export const window = {
   /** Programmable active editor; tests set it to exercise IDE insertion. */
   activeTextEditor: undefined as StubTextEditor | undefined,
+  onDidChangeActiveTextEditor: (listener: (editor: StubTextEditor | undefined) => void): Disposable => {
+    activeEditorListeners.add(listener)
+    return new Disposable(() => activeEditorListeners.delete(listener))
+  },
+  onDidChangeTextEditorSelection: (listener: (event: { textEditor: StubTextEditor }) => void): Disposable => {
+    selectionListeners.add(listener)
+    return new Disposable(() => selectionListeners.delete(listener))
+  },
   showErrorMessage: (message: string): Promise<void> => {
     errorMessages.push(message)
     return Promise.resolve()
@@ -81,6 +91,10 @@ export const Uri = {
  * vscode API, where the active editor is `undefined` when none is open). */
 export function setActiveEditor(editor: StubTextEditor | null): void {
   window.activeTextEditor = editor ?? undefined
+  for (const listener of activeEditorListeners) listener(window.activeTextEditor)
+  if (window.activeTextEditor !== undefined) {
+    for (const listener of selectionListeners) listener({ textEditor: window.activeTextEditor })
+  }
 }
 
 /** Test control: notifications the extension host raised via the stub. */

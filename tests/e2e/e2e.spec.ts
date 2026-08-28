@@ -4,7 +4,7 @@
  * dsh host. Covers the five TODO regressions plus the core chat loop:
  *   ① IDE content insertion           (composer chip -> stub editor content)
  *   ② askuserquestion replay          (frame while page closed -> init replay)
- *   ③ cross-workspace isolation       (init filter + host/session-added guard)
+ *   ③ cross-workspace history         (complete init + live host/session-added)
  *   ④ session moves to top on send
  *   ⑤ excluded: turn-timer resume is covered by unit tests (todo-fixes)
  *   + live chat loop (real model call, structural assertions only)
@@ -51,10 +51,10 @@ async function selectSessionRow(page: Page, title: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// ③ init filtering: only sessions of the current workspace are rendered
+// ③ complete dsh history: sessions from every workspace are rendered
 // ---------------------------------------------------------------------------
 
-test('init renders only sessions of the current workspace', async ({ page, harness }) => {
+test('init renders sessions from every dsh workspace', async ({ page, harness }) => {
   const wsSession = await harness.createSession(harness.workspacePath, 'T1-WS')
   void wsSession
   await harness.createSession(harness.foreignPath, 'T1-FOREIGN')
@@ -62,29 +62,100 @@ test('init renders only sessions of the current workspace', async ({ page, harne
   await openApp(page, harness)
 
   await expect(page.locator('.session-row', { hasText: 'T1-WS' })).toBeVisible()
-  await expect(page.locator('.session-row', { hasText: 'T1-FOREIGN' })).toHaveCount(0)
-  await expect(page.locator('.session-row')).toHaveCount(1)
+  await expect(page.locator('.session-row', { hasText: 'T1-FOREIGN' })).toBeVisible()
+  await expect(page.locator('.session-row')).toHaveCount(2)
+  await expect(page.locator('.empty-deepseek-icon')).toBeVisible()
+})
+
+test('history browser is an anchored popover with search and grouping controls', async ({ page, harness }) => {
+  await harness.createSession(harness.workspacePath, 'HISTORY-BROWSER-E2E')
+  await openApp(page, harness)
+
+  await page.locator('.chat-list-header .icon-btn').first().click()
+  const browser = page.locator('.chat-list-dropdown')
+  await expect(browser).toBeVisible()
+  const box = await browser.boundingBox()
+  const viewport = page.viewportSize()
+  expect(box).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect(box!.height).toBeGreaterThan(viewport!.height * 0.75)
+  expect(box!.x).toBeGreaterThan(0)
+  expect(box!.width).toBeLessThan(viewport!.width)
+  await expect(page.locator('.empty-deepseek-icon')).toBeVisible()
+  expect(await browser.evaluate((element) => getComputedStyle(element).borderRadius)).not.toBe('0px')
+
+  await browser.locator('.chat-list-search input').fill('HISTORY-BROWSER-E2E')
+  await expect(browser.locator('.session-row', { hasText: 'HISTORY-BROWSER-E2E' })).toBeVisible()
+  await browser.locator('.view-options-trigger').click()
+  const menuButtons = browser.locator('.view-options-menu button')
+  await expect(menuButtons.filter({ hasText: '按工作区' })).toBeVisible()
+  await expect(menuButtons.filter({ hasText: '单列表' })).toBeVisible()
+  await expect(menuButtons.filter({ hasText: '手动排序' })).toBeVisible()
+  await expect(menuButtons.filter({ hasText: '最近更新' })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(browser).toBeHidden()
+
+  await page.locator('.chat-list-header .icon-btn').first().click()
+  await expect(browser).toBeVisible()
+  await page.mouse.click(viewport!.width - 2, Math.round(viewport!.height / 2))
+  await expect(browser).toBeHidden()
+})
+
+test('mock dsh projections drive the permission picker and context detail popover', async ({ page, harness }) => {
+  await page.goto(`${harness.pageUrl}?mock`)
+  await expect(page.locator('.chat-list')).toBeVisible()
+  await page.locator('.session-row', { hasText: 'Demo：工具调用 + 审批 + 提问' }).click()
+
+  const permission = page.locator('.permission-trigger')
+  await expect(permission).toBeVisible()
+  await expect(permission).toContainText('Workspace Write')
+  await permission.click()
+  await expect(page.locator('.permission-menu')).toContainText('Read Only')
+  await expect(page.locator('.permission-menu')).toContainText('Full access')
+  await page.locator('.permission-menu .composer-menu-item', { hasText: 'Read Only' }).click()
+  await expect(permission).toContainText('Read Only')
+
+  await permission.click()
+  await page.locator('.permission-menu .composer-menu-item', { hasText: 'Full access' }).click()
+  const confirmation = page.locator('.composer-dialog')
+  await expect(confirmation).toBeVisible()
+  await expect(confirmation.locator('.composer-btn-danger')).toBeDisabled()
+  await confirmation.locator('input[type=checkbox]').check()
+  await confirmation.locator('.composer-btn-danger').click()
+  await expect(permission).toContainText('Full access')
+
+  const meter = page.locator('.context-meter-trigger')
+  await expect(meter).toHaveAttribute('title', '上下文已用: 45%')
+  await meter.click()
+  const panel = page.locator('.context-meter-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('~57.6K / 128K')
+  await expect(panel).toContainText('系统提示词')
+  await expect(panel).toContainText('工具')
+  await expect(panel).toContainText('对话消息')
+  await expect(panel.locator('.context-meter-segment')).toHaveCount(3)
+  await meter.click()
+  await expect(panel).toBeHidden()
 })
 
 // ---------------------------------------------------------------------------
-// ③ live frames: foreign session additions never enter the list
+// ③ live frames: additions from every dsh workspace enter the list
 // ---------------------------------------------------------------------------
 
-test('host/session-added frames from other workspaces are ignored', async ({ page, harness }) => {
+test('host/session-added frames from other workspaces remain visible', async ({ page, harness }) => {
   await harness.createSession(harness.workspacePath, 'T2-WS')
   await openApp(page, harness)
-  // Relative count: earlier tests share the host, so compare before/after.
-  const before = await page.locator('.session-row').count()
 
-  // A session created in a foreign directory broadcasts a real
-  // host/session-added frame with a foreign cwd — it must not enter the list.
+  // A session created in a foreign directory broadcasts a real frame and is
+  // part of the complete dsh history.
   await harness.createSession(harness.foreignPath, 'T2-FOREIGN')
-  await expect(page.locator('.session-row')).toHaveCount(before)
+  await expect(page.locator('.session-row', { hasText: 'T2-FOREIGN' })).toBeVisible()
 
   // A session created for the current workspace enters the list.
   await harness.createSession(harness.workspacePath, 'T2-WS2')
   await expect(page.locator('.session-row', { hasText: 'T2-WS2' })).toBeVisible()
-  await expect(page.locator('.session-row')).toHaveCount(before + 1)
+  await expect(page.locator('.session-row', { hasText: 'T2-FOREIGN' })).toBeVisible()
 })
 
 // ---------------------------------------------------------------------------
@@ -224,13 +295,15 @@ test('asking with an editor selection auto-injects the selected code', async ({ 
   const editorPath = path.join(harness.workspacePath, 'src', 'auto.ts')
   harness.setActiveEditor({
     document: { getText: (selection) => (selection === undefined ? 'FULL FILE' : 'function selectedFn() { return 42 }'), uri: { fsPath: editorPath } },
-    selection: { isEmpty: false },
+    selection: { isEmpty: false, start: { line: 4 }, end: { line: 7 } },
   })
   await harness.createSession(harness.workspacePath, 'AUTO-SESS')
   await openApp(page, harness)
   await selectSessionRow(page, 'AUTO-SESS')
   const input = page.locator('.composer-input')
   await expect(input).toBeVisible()
+  await expect(page.locator('.composer-context-chip')).toContainText('auto.ts')
+  await expect(page.locator('.composer-context-chip')).toContainText('#L5-L8')
 
   await input.fill('这个函数是做什么的？')
   await input.press('Enter')
@@ -275,7 +348,7 @@ test('toggling IDE context injection off stops the injection', async ({ page, ha
   const editorPath = path.join(harness.workspacePath, 'src', 'off.ts')
   harness.setActiveEditor({
     document: { getText: (selection) => (selection === undefined ? 'FULL FILE' : 'function secretFn() { return 7 }'), uri: { fsPath: editorPath } },
-    selection: { isEmpty: false },
+    selection: { isEmpty: false, start: { line: 1 }, end: { line: 1 } },
   })
   await harness.createSession(harness.workspacePath, 'OFF-SESS')
   await openApp(page, harness)

@@ -12,7 +12,9 @@ import type {
   HostStatus,
   IdeContentKind,
   IdeContentPayload,
+  IdeContextMeta,
   InitPayload,
+  SettingsInitPayload,
   WebviewMessage,
 } from '../shared/bridge'
 import type { UiRequest } from '../shared/ui-requests'
@@ -47,7 +49,7 @@ export interface BridgeClient {
   rpc: <T = unknown>(method: UiRequest, params?: unknown) => Promise<T>
   onEvent: (cb: (channel: 'mux' | 'host', frame: unknown) => void) => () => void
   onHostStatus: (cb: (status: HostStatus) => void) => () => void
-  onCommand: (cb: (command: 'newChat' | 'openSettings' | 'exportSession') => void) => () => void
+  onCommand: (cb: (command: 'newChat' | 'exportSession') => void) => () => void
   onWorkspaceChanged: (cb: (payload: InitPayload) => void) => () => void
   waitInit: () => Promise<InitPayload>
   /** Answer a pending approval request (see the `respond` bridge message). */
@@ -61,6 +63,9 @@ export interface BridgeClient {
   /** Correlated request/response: resolve with the payload (or an error
    * payload) once the extension host answers. */
   fetchIdeContent: (kind: IdeContentKind) => Promise<IdeContentPayload>
+  onIdeContextMeta: (cb: (context: IdeContextMeta | null) => void) => () => void
+  requestIdeContextMeta: () => void
+  addWorkspace: () => Promise<{ canceled: boolean; sessionId?: SessionId; payload?: InitPayload }>
   selectWorkspace: (uri: string) => void
   openFolder: () => void
   exportSession: (sessionId: SessionId) => void
@@ -68,6 +73,12 @@ export interface BridgeClient {
   openExternal: (href: string) => void
   setIdeContext: (enabled: boolean) => void
   setActiveSession: (sessionId: SessionId | null) => void
+  waitSettingsInit: () => Promise<SettingsInitPayload>
+  onSettingsInit: (cb: (payload: SettingsInitPayload) => void) => () => void
+  onSettingsRefresh: (cb: () => void) => () => void
+  onSettingsInitError: (cb: (error: string) => void) => () => void
+  openSettings: () => void
+  closeSettings: () => void
 }
 
 interface PendingRpc {
@@ -77,13 +88,23 @@ interface PendingRpc {
 
 const pendingRpcs = new Map<string, PendingRpc>()
 const pendingIde = new Map<string, (content: IdeContentPayload) => void>()
+const pendingWorkspaceAdds = new Map<string, {
+  resolve: (result: { canceled: boolean; sessionId?: SessionId; payload?: InitPayload }) => void
+  reject: (error: Error) => void
+}>()
 const eventListeners = new Set<(channel: 'mux' | 'host', frame: unknown) => void>()
 const statusListeners = new Set<(status: HostStatus) => void>()
-const commandListeners = new Set<(command: 'newChat' | 'openSettings' | 'exportSession') => void>()
+const commandListeners = new Set<(command: 'newChat' | 'exportSession') => void>()
 const workspaceListeners = new Set<(payload: InitPayload) => void>()
+const settingsRefreshListeners = new Set<() => void>()
+const settingsInitListeners = new Set<(payload: SettingsInitPayload) => void>()
+const settingsErrorListeners = new Set<(error: string) => void>()
 const ideContentListeners = new Set<(content: IdeContentPayload) => void>()
+const ideContextListeners = new Set<(context: IdeContextMeta | null) => void>()
 const initWaiters: Array<(payload: InitPayload) => void> = []
+const settingsInitWaiters: Array<(payload: SettingsInitPayload) => void> = []
 let initPayload: InitPayload | null = null
+let settingsInitPayload: SettingsInitPayload | null = null
 let readySent = false
 
 /** Deadline for a correlated ide-request; the extension host always answers,
@@ -101,6 +122,8 @@ if (typeof window !== 'undefined') {
           hostVersion: message.hostVersion,
           vscodeLanguage: message.vscodeLanguage,
           sessions: message.sessions,
+          workspaces: message.workspaces,
+          archivedSessionIds: message.archivedSessionIds,
           workspaceRoots: message.workspaceRoots,
           selectedWorkspaceUri: message.selectedWorkspaceUri,
           capabilities: message.capabilities,
@@ -116,6 +139,8 @@ if (typeof window !== 'undefined') {
           hostVersion: message.hostVersion,
           vscodeLanguage: message.vscodeLanguage,
           sessions: message.sessions,
+          workspaces: message.workspaces,
+          archivedSessionIds: message.archivedSessionIds,
           workspaceRoots: message.workspaceRoots,
           selectedWorkspaceUri: message.selectedWorkspaceUri,
           capabilities: message.capabilities,
@@ -126,6 +151,23 @@ if (typeof window !== 'undefined') {
         for (const cb of workspaceListeners) cb(payload)
         break
       }
+      case 'settings-init': {
+        settingsInitPayload = {
+          hostVersion: message.hostVersion,
+          vscodeLanguage: message.vscodeLanguage,
+          capabilities: message.capabilities,
+        }
+        const waiters = settingsInitWaiters.splice(0)
+        for (const waiter of waiters) waiter(settingsInitPayload)
+        if (waiters.length === 0) for (const cb of settingsInitListeners) cb(settingsInitPayload)
+        break
+      }
+      case 'settings-refresh':
+        for (const cb of settingsRefreshListeners) cb()
+        break
+      case 'settings-init-error':
+        for (const cb of settingsErrorListeners) cb(message.error)
+        break
       case 'rpc-result': {
         const pending = pendingRpcs.get(message.id)
         if (!pending) return
@@ -161,6 +203,21 @@ if (typeof window !== 'undefined') {
           }
         }
         for (const cb of ideContentListeners) cb(payload)
+        break
+      }
+      case 'ide-context-changed':
+        for (const cb of ideContextListeners) cb(message.context)
+        break
+      case 'add-workspace-result': {
+        const pending = pendingWorkspaceAdds.get(message.id)
+        if (pending === undefined) break
+        pendingWorkspaceAdds.delete(message.id)
+        if (message.error !== undefined) pending.reject(new Error(message.error))
+        else pending.resolve({
+          canceled: message.canceled === true,
+          sessionId: message.sessionId,
+          payload: message.payload,
+        })
         break
       }
     }
@@ -226,9 +283,42 @@ export function onHostStatus(cb: (status: HostStatus) => void): () => void {
  * @param cb - receives the command identifier.
  * @returns unsubscribe function.
  */
-export function onCommand(cb: (command: 'newChat' | 'openSettings' | 'exportSession') => void): () => void {
+export function onCommand(cb: (command: 'newChat' | 'exportSession') => void): () => void {
   commandListeners.add(cb)
   return () => commandListeners.delete(cb)
+}
+
+export function waitSettingsInit(): Promise<SettingsInitPayload> {
+  if (settingsInitPayload !== null) return Promise.resolve(settingsInitPayload)
+  if (vscode === null) return Promise.reject(new Error('vscode webview API unavailable (use the mock bridge)'))
+  if (!readySent) {
+    readySent = true
+    vscode.postMessage({ type: 'ready' })
+  }
+  return new Promise((resolve) => settingsInitWaiters.push(resolve))
+}
+
+export function onSettingsRefresh(cb: () => void): () => void {
+  settingsRefreshListeners.add(cb)
+  return () => settingsRefreshListeners.delete(cb)
+}
+
+export function onSettingsInit(cb: (payload: SettingsInitPayload) => void): () => void {
+  settingsInitListeners.add(cb)
+  return () => settingsInitListeners.delete(cb)
+}
+
+export function onSettingsInitError(cb: (error: string) => void): () => void {
+  settingsErrorListeners.add(cb)
+  return () => settingsErrorListeners.delete(cb)
+}
+
+export function openSettings(): void {
+  vscode?.postMessage({ type: 'open-settings' })
+}
+
+export function closeSettings(): void {
+  vscode?.postMessage({ type: 'close-settings' })
 }
 
 export function onWorkspaceChanged(cb: (payload: InitPayload) => void): () => void {
@@ -331,5 +421,23 @@ export function fetchIdeContent(kind: IdeContentKind): Promise<IdeContentPayload
         resolvePending({ kind, text: '', error: 'ide-request 超时' })
       }
     }, IDE_REQUEST_TIMEOUT_MS)
+  })
+}
+
+export function onIdeContextMeta(cb: (context: IdeContextMeta | null) => void): () => void {
+  ideContextListeners.add(cb)
+  return () => ideContextListeners.delete(cb)
+}
+
+export function requestIdeContextMeta(): void {
+  vscode?.postMessage({ type: 'ide-context-meta-request' })
+}
+
+export function addWorkspace(): Promise<{ canceled: boolean; sessionId?: SessionId; payload?: InitPayload }> {
+  if (vscode === null) return Promise.reject(new Error('vscode webview API unavailable (use the mock bridge)'))
+  const id = crypto.randomUUID()
+  return new Promise((resolve, reject) => {
+    pendingWorkspaceAdds.set(id, { resolve, reject })
+    vscode.postMessage({ type: 'add-workspace', id })
   })
 }

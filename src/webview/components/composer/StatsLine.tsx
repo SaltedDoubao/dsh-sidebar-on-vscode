@@ -72,17 +72,17 @@ export function cacheHitPercent(usage: TokenUsageProjection): number | null {
 }
 
 /** Pipe-separated stat groups built from the sessionStats projection. */
-function statsGroups(stats: SessionStatsProjection): string[] {
+export function statsGroups(stats: SessionStatsProjection, zh = false): string[] {
   const groups: string[] = []
   if (stats.steps === 0) return groups
-  groups.push(`${stats.turns} turns · ${stats.steps} steps`)
+  groups.push(zh ? `${stats.turns} 轮次 · ${stats.steps} 步骤` : `${stats.turns} turns · ${stats.steps} steps`)
   const durations: string[] = []
-  if (stats.llmMs > 0) durations.push(`LLM ${formatDuration(stats.llmMs)}`)
-  if (stats.toolMs > 0) durations.push(`Tool call ${formatDuration(stats.toolMs)}`)
+  if (stats.llmMs > 0) durations.push(`${zh ? '模型耗时' : 'LLM'} ${formatDuration(stats.llmMs)}`)
+  if (stats.toolMs > 0) durations.push(`${zh ? '工具调用' : 'Tool call'} ${formatDuration(stats.toolMs)}`)
   if (durations.length > 0) groups.push(durations.join(' · '))
   const speeds: string[] = []
   if (stats.ttftSteps > 0) {
-    speeds.push(`TTFT avg ${formatDuration(stats.ttftMs / stats.ttftSteps)}`)
+    speeds.push(`${zh ? '首字延迟均值' : 'TTFT avg'} ${formatDuration(stats.ttftMs / stats.ttftSteps)}`)
   }
   if (stats.decodeMs > 0) {
     speeds.push(`${formatTokensPerSecond(stats.decodeTokens / (stats.decodeMs / 1_000))} tok/s`)
@@ -94,14 +94,15 @@ function statsGroups(stats: SessionStatsProjection): string[] {
 export function StatsLine(): JSX.Element | null {
   const stats = useAppStore((s) => s.sessionStats)
   const usage = useAppStore((s) => s.tokenUsage)
-  const groups: string[] = stats === null ? [] : statsGroups(stats)
+  const zh = useAppStore((s) => s.uiPrefs.language === 'zh')
+  const groups: string[] = stats === null ? [] : statsGroups(stats, zh)
   // Billing rides the durable projection, so these survive paging and
   // compaction. Gated on actual token activity: a session whose steps all
   // settled without billing shows its counts without a zero-token group.
   if (usage !== null && (billedInputTokens(usage) > 0 || usage.outputTokens > 0)) {
     const cacheHit = cacheHitPercent(usage)
-    if (cacheHit !== null) groups.push(`Cache hit ${cacheHit}%`)
-    groups.push(`Input ${formatTokens(billedInputTokens(usage))} tok · Output ${formatTokens(usage.outputTokens)} tok`)
+    if (cacheHit !== null) groups.push(`${zh ? '缓存命中' : 'Cache hit'} ${cacheHit}%`)
+    groups.push(`${zh ? '输入' : 'Input'} ${formatTokens(billedInputTokens(usage))} tok · ${zh ? '输出' : 'Output'} ${formatTokens(usage.outputTokens)} tok`)
   }
   if (groups.length === 0) return null
   return <div className="stats-line">{groups.join(' | ')}</div>

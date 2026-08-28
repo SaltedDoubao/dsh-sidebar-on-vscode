@@ -25,6 +25,10 @@ export interface UiRequestMap extends Pick<RpcMethodMap,
   | 'subagent.interrupt'
   | 'host.describe'
   | 'workspace.create'
+  | 'workspace.rename'
+  | 'workspace.delete'
+  | 'workspace.insertBefore'
+  | 'workspace.insertSessionBefore'
   | 'workspace.archiveSession'
   | 'skill.list'
   | 'goal.create'
@@ -34,6 +38,7 @@ export interface UiRequestMap extends Pick<RpcMethodMap,
   | 'goal.complete'
   | 'goal.clear'
   | 'settings.describe'
+  | 'settings.openDocument'
   | 'settings.update'
   | 'settings.replace'
   | 'settings.mutate'
@@ -68,9 +73,10 @@ export const UI_REQUESTS = [
   'session.attachment', 'session.updateQueue', 'session.cancel',
   'subagent.list', 'subagent.history', 'subagent.prompt', 'subagent.interrupt',
   'host.describe',
-  'workspace.create', 'workspace.archiveSession', 'skill.list',
+  'workspace.create', 'workspace.rename', 'workspace.delete', 'workspace.insertBefore',
+  'workspace.insertSessionBefore', 'workspace.archiveSession', 'skill.list',
   'goal.create', 'goal.edit', 'goal.pause', 'goal.resume', 'goal.complete', 'goal.clear',
-  'settings.describe', 'settings.update', 'settings.replace', 'settings.mutate',
+  'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
   'credentials.describe', 'credentials.set', 'credentials.unset',
   'llm.providers', 'llm.models', 'llm.discoverModels',
   'agentPreset.list', 'agentPreset.select', 'agentPreset.read', 'agentPreset.copy',

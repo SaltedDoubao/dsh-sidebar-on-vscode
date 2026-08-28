@@ -36,6 +36,8 @@ export interface RootSlice {
 
   /** Bootstrap: wait for init, install sessions, wire event/status/command fan-out. */
   initialize: () => Promise<void>
+  /** Install one authoritative dsh/VS Code baseline. */
+  applyInitPayload: (payload: InitPayload, resetSelection?: boolean) => void
 }
 
 /** The full store: root slice + the six workflow-owned slices. */
@@ -50,6 +52,30 @@ export const useAppStore = create<AppStore>()((...a) => {
     initialized: false,
     workspaceRoots: [],
     capabilities: null,
+
+    applyInitPayload: (payload, resetSelection = true) => {
+      if (resetSelection) {
+        setActiveSession(null)
+        get().clearConversation()
+        get().resetGoal()
+      }
+      useAppStore.setState({
+        cwd: payload.cwd,
+        hostVersion: payload.hostVersion,
+        workspaceRoots: payload.workspaceRoots,
+        selectedWorkspaceUri: payload.selectedWorkspaceUri,
+        capabilities: payload.capabilities,
+        ideContextEnabled: payload.ideContextEnabled,
+        uiPrefs: {
+          ...get().uiPrefs,
+          language: payload.vscodeLanguage.toLowerCase().startsWith('zh') ? 'zh' : 'en',
+        },
+        ...(resetSelection ? { activeSessionId: null } : {}),
+        hostStatus: 'ready',
+      })
+      get().initSessions(payload.sessions)
+      get().initWorkspaces(payload.workspaces, payload.archivedSessionIds)
+    },
 
     initialize: async () => {
       if (get().initialized) return
@@ -70,49 +96,18 @@ export const useAppStore = create<AppStore>()((...a) => {
       })
       onCommand((command) => {
         if (command === 'newChat') void get().newChat()
-        else if (command === 'openSettings') get().openSettings()
         else {
           const active = get().activeSessionId
           if (active !== null) exportSession(active)
         }
       })
       const applyWorkspace = (payload: InitPayload): void => {
-        setActiveSession(null)
-        get().clearConversation()
-        get().resetGoal()
-        useAppStore.setState({
-          cwd: payload.cwd,
-          hostVersion: payload.hostVersion,
-          workspaceRoots: payload.workspaceRoots,
-          selectedWorkspaceUri: payload.selectedWorkspaceUri,
-          capabilities: payload.capabilities,
-          ideContextEnabled: payload.ideContextEnabled,
-          uiPrefs: {
-            ...get().uiPrefs,
-            language: payload.vscodeLanguage.toLowerCase().startsWith('zh') ? 'zh' : 'en',
-          },
-          activeSessionId: null,
-          hostStatus: 'ready',
-        })
-        get().initSessions(payload.sessions, payload.cwd)
+        get().applyInitPayload(payload)
       }
       onWorkspaceChanged(applyWorkspace)
       const init = await waitInit()
-      useAppStore.setState({
-        cwd: init.cwd,
-        hostVersion: init.hostVersion,
-        workspaceRoots: init.workspaceRoots,
-        selectedWorkspaceUri: init.selectedWorkspaceUri,
-        capabilities: init.capabilities,
-        ideContextEnabled: init.ideContextEnabled,
-        uiPrefs: {
-          ...get().uiPrefs,
-          language: init.vscodeLanguage.toLowerCase().startsWith('zh') ? 'zh' : 'en',
-        },
-        initialized: true,
-        hostStatus: 'ready',
-      })
-      get().initSessions(init.sessions, init.cwd)
+      get().applyInitPayload(init, false)
+      useAppStore.setState({ initialized: true })
       // Replay answerable overlays that arrived while the webview was hidden
       // (a disposed sidebar webview is re-resolved on show): select the
       // session holding the pending question/approval, then install the state
@@ -130,7 +125,8 @@ export const useAppStore = create<AppStore>()((...a) => {
       void get().loadGlobalModels().catch(() => undefined)
       // Preselect the last used model (saved host-side as the default).
       void get().loadDefaultModel().catch(() => undefined)
-      // Reflect the saved default permission in the composer chip.
+      // Load the default used for future sessions. Current-session access is
+      // independently driven by that session's permissions projection.
       void get().syncPermissionDefault().catch(() => undefined)
       // DSH locale/theme are authoritative. The init language is only the
       // temporary fallback while this settings baseline is in flight.

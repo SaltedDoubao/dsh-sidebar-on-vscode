@@ -8,6 +8,7 @@
 import type { ApprovalRequestId, SessionId } from '../extension/protocol/brand'
 import type { AskUserQuestionAnswerItem, MuxFrame, HostFrame } from '../extension/protocol/events'
 import type { CapabilityMatrix } from '../extension/capabilities'
+import type { WorkspaceView } from '../extension/protocol/views'
 import type { UiRequest } from './ui-requests'
 
 /** Host lifecycle states pushed to the webview. */
@@ -45,7 +46,7 @@ export interface SessionMeta {
   parentSessionId?: SessionId
   /** Coarse durable origin used by navigation surfaces. */
   origin?: 'subagent'
-  /** Session working directory; the webview filters the list by the workspace cwd. */
+  /** Session working directory, retained for display and legacy cwd-backed sessions. */
   cwd?: string
 }
 
@@ -57,8 +58,12 @@ export interface InitPayload {
   hostVersion: string
   /** VS Code UI language used until the authoritative DSH locale loads. */
   vscodeLanguage: string
-  /** Full session list; the webview filters by `cwd`. */
+  /** All host-visible, non-archived sessions across DSH workspaces. */
   sessions: SessionMeta[]
+  /** Complete dsh Workspace registry baseline, in durable display order. */
+  workspaces: WorkspaceView[]
+  /** Registry-global archived sessions hidden from every history view. */
+  archivedSessionIds: SessionId[]
   /** VS Code workspace roots available to this window. */
   workspaceRoots: WorkspaceRoot[]
   /** Selected root URI, absent in an empty-window workspace. */
@@ -71,6 +76,13 @@ export interface InitPayload {
    * hidden = webview disposed). Replayed so the takeover panel re-appears.
    */
   pendingOverlays?: PendingOverlayReplay[]
+}
+
+/** Minimal initialization payload for the independent editor settings page. */
+export interface SettingsInitPayload {
+  hostVersion: string
+  vscodeLanguage: string
+  capabilities: CapabilityMatrix
 }
 
 export interface WorkspaceRoot {
@@ -97,6 +109,16 @@ export interface IdeContentPayload {
   id?: string
 }
 
+/** Lightweight active-editor context; selection text is fetched only at send time. */
+export interface IdeContextMeta {
+  path: string
+  fileName: string
+  /** 1-based inclusive selection start, absent for an empty selection. */
+  startLine?: number
+  /** 1-based inclusive selection end, absent for an empty selection. */
+  endLine?: number
+}
+
 /** Messages the webview sends to the extension host. */
 export type WebviewMessage =
   /** webview mounted; requests initialization. */
@@ -117,6 +139,9 @@ export type WebviewMessage =
    * `id` turns the push into a request/response pair (send-time auto-inject);
    * without it the answer fans out to the fire-and-forget subscribers. */
   | { type: 'ide-request'; kind: IdeContentKind; id?: string }
+  | { type: 'ide-context-meta-request' }
+  /** Atomic dsh native-directory picker -> Workspace adoption -> Session creation. */
+  | { type: 'add-workspace'; id: string }
   | { type: 'select-workspace'; uri: string }
   | { type: 'open-folder' }
   | { type: 'export-session'; sessionId: SessionId }
@@ -125,12 +150,20 @@ export type WebviewMessage =
   | { type: 'set-ide-context'; enabled: boolean }
   /** Foreground identity used only to suppress duplicate native completion notifications. */
   | { type: 'active-session'; sessionId: SessionId | null }
+  /** Open/close the singleton editor-area settings page. */
+  | { type: 'open-settings' }
+  | { type: 'close-settings' }
 
 /** Messages the extension host sends to the webview. */
 export type ExtensionMessage =
   /** Initialization data answering `ready`. */
   | ({ type: 'init' } & InitPayload)
   | ({ type: 'workspace-changed' } & InitPayload)
+  | ({ type: 'settings-init' } & SettingsInitPayload)
+  | { type: 'settings-refresh' }
+  | { type: 'settings-init-error'; error: string }
+  | { type: 'ide-context-changed'; context: IdeContextMeta | null }
+  | { type: 'add-workspace-result'; id: string; canceled?: true; sessionId?: SessionId; payload?: InitPayload; error?: string }
   /** RPC answer paired by `id`. */
   | { type: 'rpc-result'; id: string; result?: unknown; error?: string }
   /** dsh event stream passthrough. */
@@ -141,7 +174,7 @@ export type ExtensionMessage =
    * Toolbar command forwarded to the webview (extension of the frozen table for
    * the W1 commands; the webview store owns the actual behavior).
    */
-  | { type: 'command'; command: 'newChat' | 'openSettings' | 'exportSession' }
+  | { type: 'command'; command: 'newChat' | 'exportSession' }
   /**
    * IDE content answering an `ide-request` (or a toolbar command): the
    * extension reads the active editor and posts the text back here.

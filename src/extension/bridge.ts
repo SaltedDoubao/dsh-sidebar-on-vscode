@@ -2,10 +2,11 @@ import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { z } from 'zod'
 import type { DshAdapter } from './capabilities'
-import type { HostManager, HostInfo } from './host-manager'
+import { DshNotInstalledError, type HostManager, type HostInfo } from './host-manager'
 import type {
   ExtensionMessage,
   IdeContentKind,
+  IdeContextMeta,
   IdeContentPayload,
   InitPayload,
   SessionMeta,
@@ -15,6 +16,7 @@ import type {
 import { UI_REQUESTS, type UiRequest } from '../shared/ui-requests'
 import type { SessionSummary } from './protocol/sessions'
 import type { SessionId } from './protocol/brand'
+import type { WorkspaceView } from './protocol/views'
 import { OverlayRetention } from './overlay-retention'
 
 const SELECTED_ROOT_KEY = 'deepseekHarness.selectedWorkspaceUri'
@@ -28,6 +30,8 @@ const inboundSchema = z.union([
   z.object({ type: z.literal('respond'), kind: z.literal('approval'), approvalId: z.string(), decision: z.enum(['allow-once', 'refuse']) }),
   z.object({ type: z.literal('respond'), kind: z.literal('question'), sessionId: z.string(), answers: z.array(recordSchema) }),
   z.object({ type: z.literal('ide-request'), kind: z.enum(['selection', 'active-file']), id: z.string().optional() }),
+  z.object({ type: z.literal('ide-context-meta-request') }),
+  z.object({ type: z.literal('add-workspace'), id: z.string() }),
   z.object({ type: z.literal('select-workspace'), uri: z.string() }),
   z.object({ type: z.literal('open-folder') }),
   z.object({ type: z.literal('export-session'), sessionId: z.string() }),
@@ -35,7 +39,16 @@ const inboundSchema = z.union([
   z.object({ type: z.literal('open-external'), href: z.string() }),
   z.object({ type: z.literal('set-ide-context'), enabled: z.boolean() }),
   z.object({ type: z.literal('active-session'), sessionId: z.string().nullable() }),
+  z.object({ type: z.literal('open-settings') }),
+  z.object({ type: z.literal('close-settings') }),
 ])
+
+export type WebviewSurface = 'chat' | 'settings'
+
+export interface BridgeActions {
+  openSettings?: () => void
+  closeSettings?: () => void
+}
 
 /** Secure, validated message bridge shared by the sidebar and full panel. */
 export class Bridge {
@@ -43,24 +56,38 @@ export class Bridge {
   private starting: Promise<void> | null = null
   private readonly overlays = new OverlayRetention()
   private readonly webviews = new Set<vscode.Webview>()
+  private readonly surfaces = new Map<vscode.Webview, WebviewSurface>()
   private readonly foregroundSessions = new Map<vscode.Webview, string | null>()
   private readonly runningSessions = new Set<string>()
+  private readonly knownWorkspaceIds = new Set<string>()
 
   constructor(
     private readonly adapter: DshAdapter,
     private readonly host: HostManager,
     private readonly context: vscode.ExtensionContext,
+    private readonly actions: BridgeActions = {},
   ) {
     this.adapter.onMuxEvent((frame) => this.overlays.record(frame))
-    this.adapter.onHostEvent((frame) => this.handleCompletionNotification(frame))
+    this.adapter.onHostEvent((frame) => {
+      this.handleCompletionNotification(frame)
+      if (frame.type === 'host/workspace-changed') this.knownWorkspaceIds.add(frame.workspace.workspaceId)
+      if (frame.type === 'host/workspace-removed') this.knownWorkspaceIds.delete(frame.workspaceId)
+    })
     this.adapter.onRecovered(() => {
-      for (const webview of this.webviews) void this.sendInit(webview, 'workspace-changed')
+      for (const webview of this.webviews) {
+        if (this.surfaces.get(webview) === 'settings') {
+          void this.sendSettingsInit(webview).then(() => this.post(webview, { type: 'settings-refresh' }))
+        } else {
+          void this.sendInit(webview, 'workspace-changed')
+        }
+      }
     })
   }
 
-  attach(webview: vscode.Webview): vscode.Disposable {
+  attach(webview: vscode.Webview, surface: WebviewSurface = 'chat'): vscode.Disposable {
     this.webviews.add(webview)
-    this.foregroundSessions.set(webview, null)
+    this.surfaces.set(webview, surface)
+    if (surface === 'chat') this.foregroundSessions.set(webview, null)
     const disposables: vscode.Disposable[] = [
       webview.onDidReceiveMessage((raw: unknown) => {
         const parsed = inboundSchema.safeParse(raw)
@@ -70,20 +97,33 @@ export class Bridge {
         }
         void this.handleMessage(webview, parsed.data as WebviewMessage)
       }),
-      new vscode.Disposable(this.adapter.onMuxEvent((frame) => this.post(webview, { type: 'event', channel: 'mux', frame }))),
-      new vscode.Disposable(this.adapter.onHostEvent((frame) => this.post(webview, { type: 'event', channel: 'host', frame }))),
       new vscode.Disposable(this.adapter.onStatus((connected) => {
         this.post(webview, { type: 'host-status', status: connected ? 'ready' : 'down' })
       })),
     ]
+    if (surface === 'chat') {
+      disposables.push(
+        new vscode.Disposable(this.adapter.onMuxEvent((frame) => this.post(webview, { type: 'event', channel: 'mux', frame }))),
+        new vscode.Disposable(this.adapter.onHostEvent((frame) => this.post(webview, { type: 'event', channel: 'host', frame }))),
+        vscode.window.onDidChangeActiveTextEditor(() => this.postIdeContextMeta(webview)),
+        vscode.window.onDidChangeTextEditorSelection((event) => {
+          if (event.textEditor === vscode.window.activeTextEditor) this.postIdeContextMeta(webview)
+        }),
+      )
+    }
     return vscode.Disposable.from(...disposables, new vscode.Disposable(() => {
       this.webviews.delete(webview)
+      this.surfaces.delete(webview)
       this.foregroundSessions.delete(webview)
     }))
   }
 
-  postCommand(command: 'newChat' | 'openSettings' | 'exportSession', targets: Iterable<vscode.Webview>): void {
+  postCommand(command: 'newChat' | 'exportSession', targets: Iterable<vscode.Webview>): void {
     for (const webview of targets) this.post(webview, { type: 'command', command })
+  }
+
+  refreshSettings(webview: vscode.Webview): void {
+    this.post(webview, { type: 'settings-refresh' })
   }
 
   postIdeContent(kind: IdeContentKind, targets: Iterable<vscode.Webview>): void {
@@ -95,7 +135,10 @@ export class Bridge {
     await this.host.restart()
     this.hostInfo = null
     this.starting = null
-    for (const webview of this.webviews) void this.sendInit(webview, 'workspace-changed')
+    for (const webview of this.webviews) {
+      if (this.surfaces.get(webview) === 'settings') void this.sendSettingsInit(webview)
+      else void this.sendInit(webview, 'workspace-changed')
+    }
   }
 
   async stop(): Promise<void> {
@@ -109,7 +152,8 @@ export class Bridge {
   private async handleMessage(webview: vscode.Webview, message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
-        await this.sendInit(webview, 'init')
+        if (this.surfaces.get(webview) === 'settings') await this.sendSettingsInit(webview)
+        else await this.sendInit(webview, 'init')
         break
       case 'rpc':
         await this.handleRpc(webview, message.id, message.method, message.params)
@@ -119,6 +163,12 @@ export class Bridge {
         break
       case 'ide-request':
         this.handleIdeRequest(webview, message.kind, message.id)
+        break
+      case 'ide-context-meta-request':
+        this.postIdeContextMeta(webview)
+        break
+      case 'add-workspace':
+        await this.handleAddWorkspace(webview, message.id)
         break
       case 'select-workspace':
         await this.selectWorkspace(webview, message.uri)
@@ -143,6 +193,12 @@ export class Bridge {
       case 'active-session':
         this.foregroundSessions.set(webview, message.sessionId)
         break
+      case 'open-settings':
+        this.actions.openSettings?.()
+        break
+      case 'close-settings':
+        this.actions.closeSettings?.()
+        break
     }
   }
 
@@ -163,10 +219,30 @@ export class Bridge {
       await this.ensureStarted(webview)
       const payload = await this.buildInitPayload()
       this.post(webview, { type, ...payload })
+      this.postIdeContextMeta(webview)
     } catch (error) {
       this.post(webview, { type: 'host-status', status: 'down' })
       this.host.log(`[bridge] initialization failed: ${errorMessage(error)}`)
-      void vscode.window.showErrorMessage(`DeepSeek Harness initialization failed: ${errorMessage(error)}`)
+      this.showInitializationError(error)
+    }
+  }
+
+  private async sendSettingsInit(webview: vscode.Webview): Promise<void> {
+    try {
+      await this.ensureStarted(webview)
+      const description = await this.adapter.rpc<{ version: string }>('host.describe', {})
+      this.post(webview, {
+        type: 'settings-init',
+        hostVersion: description.version,
+        vscodeLanguage: vscode.env.language,
+        capabilities: this.adapter.capabilities(),
+      })
+    } catch (error) {
+      const detail = errorMessage(error)
+      this.post(webview, { type: 'host-status', status: 'down' })
+      this.post(webview, { type: 'settings-init-error', error: detail })
+      this.host.log(`[bridge] settings initialization failed: ${detail}`)
+      this.showInitializationError(error)
     }
   }
 
@@ -176,37 +252,35 @@ export class Bridge {
     const selected = this.selectedRoot(roots)
     const list = await this.adapter.rpc<{ items: SessionSummary[] }>('session.list', {})
     const capabilities = this.adapter.capabilities()
-    let selectedSessionIds: Set<string> | undefined
+    let workspaces: WorkspaceView[] = []
     let archived = new Set<string>()
 
-    if (selected !== undefined && capabilities.workspace) {
+    if (capabilities.workspace) {
       try {
-        const workspaces = await this.adapter.rpc<{
-          items: Array<{ path: string; sessionIds: SessionId[] }>
+        const baseline = await this.adapter.rpc<{
+          items: WorkspaceView[]
           archivedSessionIds: SessionId[]
         }>('workspace.list', {})
-        archived = new Set(workspaces.archivedSessionIds)
-        const match = workspaces.items.find((item) => samePath(item.path, selected.path))
-        if (match !== undefined) selectedSessionIds = new Set(match.sessionIds)
+        workspaces = baseline.items
+        archived = new Set(baseline.archivedSessionIds)
+        this.knownWorkspaceIds.clear()
+        for (const workspace of workspaces) this.knownWorkspaceIds.add(workspace.workspaceId)
       } catch (error) {
         this.host.log(`[bridge] workspace baseline unavailable: ${errorMessage(error)}`)
       }
     }
 
-    const sessions = selected === undefined
-      ? []
-      : list.items
-          .filter((summary) => !archived.has(summary.sessionId))
-          .filter((summary) => selectedSessionIds !== undefined
-            ? selectedSessionIds.has(summary.sessionId)
-            : summary.cwd === undefined || samePath(summary.cwd, selected.path))
-          .map(toSessionMeta)
+    const sessions = list.items
+      .filter((summary) => !archived.has(summary.sessionId))
+      .map(toSessionMeta)
 
     return {
       cwd: selected?.path ?? '',
       hostVersion: description.version,
       vscodeLanguage: vscode.env.language,
       sessions,
+      workspaces,
+      archivedSessionIds: [...archived] as SessionId[],
       workspaceRoots: roots,
       ...(selected === undefined ? {} : { selectedWorkspaceUri: selected.uri }),
       capabilities,
@@ -233,11 +307,14 @@ export class Bridge {
       return { path: selected.path }
     }
     if (method === 'session.create') {
-      if (selected === undefined) throw new Error('Open a folder before creating a conversation')
       const incoming = recordSchema.parse(params ?? {})
       // A workspaceId returned by workspace.create is safe to retain. The cwd
       // fallback is always replaced with the selected VS Code root.
-      if (typeof incoming['workspaceId'] === 'string') return { workspaceId: incoming['workspaceId'], ...(typeof incoming['agentPreset'] === 'string' ? { agentPreset: incoming['agentPreset'] } : {}) }
+      if (typeof incoming['workspaceId'] === 'string') {
+        if (!this.knownWorkspaceIds.has(incoming['workspaceId'])) throw new Error('The selected dsh workspace no longer exists')
+        return { workspaceId: incoming['workspaceId'], ...(typeof incoming['agentPreset'] === 'string' ? { agentPreset: incoming['agentPreset'] } : {}) }
+      }
+      if (selected === undefined) throw new Error('Open a folder or add a dsh workspace before creating a conversation')
       return { cwd: selected.path, ...(typeof incoming['agentPreset'] === 'string' ? { agentPreset: incoming['agentPreset'] } : {}) }
     }
     return params ?? {}
@@ -289,9 +366,9 @@ export class Bridge {
       reply({ text: '', error: 'No active editor' })
       return
     }
-    const selectedRoot = this.selectedRoot(this.workspaceRoots())
-    if (selectedRoot !== undefined && !isInside(selectedRoot.path, editor.document.uri.fsPath)) {
-      reply({ text: '', error: 'The active file is outside the selected workspace root' })
+    const roots = this.workspaceRoots()
+    if (roots.length > 0 && !roots.some((root) => isInside(root.path, editor.document.uri.fsPath))) {
+      reply({ text: '', error: 'The active file is outside the open VS Code workspace' })
       return
     }
     const fromSelection = kind === 'selection' && !editor.selection.isEmpty
@@ -303,6 +380,49 @@ export class Bridge {
     }
     const text = editor.document.getText(editor.selection)
     reply({ text, path: editor.document.uri.fsPath, fromSelection: true })
+  }
+
+  private ideContextMeta(): IdeContextMeta | null {
+    const editor = vscode.window.activeTextEditor
+    if (editor === undefined) return null
+    const filePath = editor.document.uri.fsPath
+    const roots = this.workspaceRoots()
+    if (roots.length > 0 && !roots.some((root) => isInside(root.path, filePath))) return null
+    const selection = editor.selection
+    const start = (selection as { start?: { line?: number } }).start?.line
+    const endPosition = (selection as { end?: { line?: number; character?: number } }).end
+    const end = endPosition?.line
+    const inclusiveEnd = typeof start === 'number' && typeof end === 'number'
+      ? (end > start && endPosition?.character === 0 ? end : end + 1)
+      : undefined
+    return {
+      path: filePath,
+      fileName: path.basename(filePath),
+      ...(!selection.isEmpty && typeof start === 'number' && typeof end === 'number'
+        ? { startLine: start + 1, endLine: inclusiveEnd ?? end + 1 }
+        : {}),
+    }
+  }
+
+  private postIdeContextMeta(webview: vscode.Webview): void {
+    this.post(webview, { type: 'ide-context-changed', context: this.ideContextMeta() })
+  }
+
+  private async handleAddWorkspace(webview: vscode.Webview, id: string): Promise<void> {
+    try {
+      const picked = await this.adapter.rpc<{ path: string | null }>('host.pickDirectory', {})
+      if (picked.path === null) {
+        this.post(webview, { type: 'add-workspace-result', id, canceled: true })
+        return
+      }
+      const { workspace } = await this.adapter.rpc<{ workspace: WorkspaceView; created: boolean }>('workspace.create', { path: picked.path })
+      this.knownWorkspaceIds.add(workspace.workspaceId)
+      const { sessionId } = await this.adapter.rpc<{ sessionId: SessionId }>('session.create', { workspaceId: workspace.workspaceId })
+      const payload = await this.buildInitPayload()
+      this.post(webview, { type: 'add-workspace-result', id, sessionId, payload })
+    } catch (error) {
+      this.post(webview, { type: 'add-workspace-result', id, error: errorMessage(error) })
+    }
   }
 
   private async exportSession(sessionId: SessionId): Promise<void> {
@@ -343,6 +463,22 @@ export class Bridge {
     const enabled = vscode.workspace.getConfiguration('deepseekHarness').get<boolean>('notifications.onCompletion', false)
     if (!enabled || [...this.foregroundSessions.values()].includes(frame.sessionId)) return
     void vscode.window.showInformationMessage(`DeepSeek Harness 后台会话已完成：${frame.sessionId}`)
+  }
+
+  private showInitializationError(error: unknown): void {
+    if (!(error instanceof DshNotInstalledError)) {
+      void vscode.window.showErrorMessage(`DeepSeek Harness initialization failed: ${errorMessage(error)}`)
+      return
+    }
+    const copyAction = '复制安装命令'
+    void vscode.window.showErrorMessage(
+      `未检测到 DeepSeek Harness CLI。请先安装并重新打开侧边栏。安装命令：${error.installCommand}`,
+      copyAction,
+    ).then((selected) => {
+      if (selected === copyAction) {
+        void vscode.env.clipboard.writeText(error.installCommand).then(undefined, () => undefined)
+      }
+    }, () => undefined)
   }
 
   private post(webview: vscode.Webview, message: ExtensionMessage): void {

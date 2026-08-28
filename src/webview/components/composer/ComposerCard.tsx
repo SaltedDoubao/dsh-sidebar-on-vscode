@@ -14,7 +14,8 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { MessageId } from '../../../extension/protocol/brand'
 import type { ImageMediaType } from '../../../extension/protocol/llm'
-import { onIdeContent } from '../../bridge'
+import type { IdeContextMeta } from '../../../shared/bridge'
+import { onIdeContent, onIdeContextMeta, requestIdeContextMeta } from '../../bridge'
 import { formatIdeInsert } from '../../ide-insert'
 import { useAppStore } from '../../store'
 import type { Attachment } from '../../types'
@@ -96,13 +97,16 @@ export function ComposerCard(): JSX.Element {
   const todos = useAppStore((s) => s.todos)
   const models = useAppStore((s) => s.models)
   const selectedModel = useAppStore((s) => s.selectedModel)
-  const permissionMode = useAppStore((s) => s.permissionMode)
+  const permissions = useAppStore((s) => s.permissions)
+  const permissionSwitchingTo = useAppStore((s) => s.permissionSwitchingTo)
+  const permissionError = useAppStore((s) => s.permissionError)
+  const language = useAppStore((s) => s.uiPrefs.language)
   const ideContextEnabled = useAppStore((s) => s.ideContextEnabled)
   const setIdeContextEnabled = useAppStore((s) => s.setIdeContextEnabled)
   const sendPrompt = useAppStore((s) => s.sendPrompt)
   const cancel = useAppStore((s) => s.cancel)
   const selectModel = useAppStore((s) => s.selectModel)
-  const setPermissionMode = useAppStore((s) => s.setPermissionMode)
+  const setPermissionPreset = useAppStore((s) => s.setPermissionPreset)
   const updateQueueItem = useAppStore((s) => s.updateQueueItem)
   const pendingApproval = useAppStore((s) => s.pendingApproval)
   const pendingQuestion = useAppStore((s) => s.pendingQuestion)
@@ -117,6 +121,7 @@ export function ComposerCard(): JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [ideContext, setIdeContext] = useState<IdeContextMeta | null>(null)
   const toastSeq = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dragDepthRef = useRef(0)
@@ -148,6 +153,12 @@ export function ComposerCard(): JSX.Element {
       })
     })
   }, [showToast])
+
+  useEffect(() => {
+    const dispose = onIdeContextMeta(setIdeContext)
+    requestIdeContextMeta()
+    return dispose
+  }, [])
 
   // Toast hold-then-fade cycle.
   useEffect(() => {
@@ -288,6 +299,21 @@ export function ComposerCard(): JSX.Element {
         <OverlayHost />
         {!overlayActive && (
           <>
+            <div className="composer-context-row">
+              {ideContextEnabled && ideContext !== null ? (
+                <div className="composer-context-chip" title={ideContext.path}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M3 1.5h6l4 4v9H3zM9 1.5v4h4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
+                  <span>{ideContext.fileName}</span>
+                  {ideContext.startLine !== undefined && <small>{ideContext.startLine === ideContext.endLine ? `#L${ideContext.startLine}` : `#L${ideContext.startLine}-L${ideContext.endLine}`}</small>}
+                  <button type="button" aria-label="关闭 IDE 上下文注入" title="关闭 IDE 上下文注入" onClick={() => setIdeContextEnabled(false)}>×</button>
+                </div>
+              ) : (
+                <button type="button" className="composer-context-add" aria-label="开启 IDE 上下文注入" onClick={() => { setIdeContextEnabled(true); requestIdeContextMeta() }}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M3 1.5h6l4 4v9H3zM9 1.5v4h4M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  添加上下文
+                </button>
+              )}
+            </div>
             <AttachmentRail items={attachments} onRemove={removeAttachment} />
             <ComposerInput
               value={draft}
@@ -324,19 +350,7 @@ export function ComposerCard(): JSX.Element {
                     e.target.value = '' // re-picking the same file must re-fire change
                   }}
                 />
-                <button
-                  type="button"
-                  className={`composer-chip composer-add${ideContextEnabled ? ' composer-chip-active' : ''}`}
-                  data-composer-tool="ide"
-                  aria-label={ideContextEnabled ? '关闭 IDE 上下文注入' : '开启 IDE 上下文注入'}
-                  title="IDE 上下文注入：发送时自动附加选中内容/当前文件（模型可见，对话里只显示提示）"
-                  onClick={() => setIdeContextEnabled(!ideContextEnabled)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                    <path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <PermissionSelect value={permissionMode} onChange={setPermissionMode} />
+                <PermissionSelect value={permissions} switchingTo={permissionSwitchingTo} error={permissionError} zh={language === 'zh'} locked={running} onChange={setPermissionPreset} />
               </div>
               <div className="composer-trailing">
                 <ModelSelect models={models} selected={selectedModel} onSelect={selectModel} />

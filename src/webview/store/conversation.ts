@@ -94,7 +94,7 @@ export interface ConversationSlice {
   tokenUsage: TokenUsageProjection | null
   /** Context occupancy projection (contextPressure key), drives ContextMeter. */
   contextPressure: ContextPressureProjection | null
-  /** Heuristic context composition (contextBreakdown key), ContextMeter tooltip. */
+  /** Heuristic context composition (contextBreakdown key), ContextMeter panel. */
   contextBreakdown: ContextBreakdownProjection | null
   /** Wall time of the last completed turn in ms (drives the turn-tail stats row). */
   lastTurnMs: number | null
@@ -436,6 +436,9 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
       tokenUsage: values?.tokenUsage ?? null,
       contextPressure: values?.contextPressure ?? null,
       contextBreakdown: values?.contextBreakdown ?? null,
+      permissions: values?.permissions ?? null,
+      permissionSwitchingTo: null,
+      permissionError: null,
     })
   },
 
@@ -562,6 +565,9 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
       tokenUsage: null,
       contextPressure: null,
       contextBreakdown: null,
+      permissions: null,
+      permissionSwitchingTo: null,
+      permissionError: null,
       lastTurnMs: null,
       loadingOlder: false,
       activeJobs: [],

@@ -195,6 +195,8 @@ body {
   font-size: 20px;
 }
 
+.empty-deepseek-icon { display:block; width:64px; height:64px; background:var(--dsh-fg-muted); opacity:.42; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; }
+
 .turn-status {
   margin-top: var(--dsh-gap);
   color: var(--dsh-fg-muted);
