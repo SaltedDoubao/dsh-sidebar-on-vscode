@@ -22,7 +22,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const hostManager = new HostManager(log, {
     autoStart: config.get<boolean>('host.autoStart', true),
     executable: config.get<string>('host.executable', ''),
-    npmSpecifier: config.get<string>('host.npmSpecifier', '@deepseek-ai/dsh@latest'),
+    arguments: config.get<string[]>('host.arguments', []),
     onOwnedHost: (info) => coordinator.publishOwnedHost(info),
     stopSharedOwnedHost: (probe) => coordinator.stopRecordedHost(probe),
   })
@@ -81,7 +81,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       hostManager.basePort = next.get<number>('host.basePort', 3080)
       hostManager.autoStart = next.get<boolean>('host.autoStart', true)
       hostManager.executable = next.get<string>('host.executable', '')
-      hostManager.npmSpecifier = next.get<string>('host.npmSpecifier', '@deepseek-ai/dsh@latest')
+      hostManager.arguments = [...next.get<string[]>('host.arguments', [])]
     }),
   )
 }

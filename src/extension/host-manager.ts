@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises'
+import { access, realpath } from 'node:fs/promises'
 import * as path from 'node:path'
 import { spawn as spawnChild, type ChildProcess } from 'node:child_process'
 import { execFile } from 'node:child_process'
@@ -18,9 +18,11 @@ export interface HostInfo {
 export interface HostManagerOptions {
   autoStart?: boolean
   executable?: string
-  npmSpecifier?: string
+  arguments?: string[]
   onOwnedHost?: (info: HostInfo) => void | Promise<void>
   stopSharedOwnedHost?: (probe: (port: number) => Promise<boolean>) => Promise<boolean>
+  /** Test seam; production always uses the ten-minute package-install budget. */
+  spawnReadyTimeoutMs?: number
 }
 
 const PROBE_METHOD = 'host.describe'
@@ -28,7 +30,17 @@ const PORT_SCAN_LIMIT = 10
 const PROBE_TIMEOUT_MS = 1500
 const SPAWN_READY_TIMEOUT_MS = 600_000
 const SPAWN_POLL_MS = 500
-const DEFAULT_NPM_SPECIFIER = '@deepseek-ai/dsh@latest'
+export const DSH_INSTALL_COMMAND = 'npm install -g @deepseek-ai/dsh'
+
+/** Raised when no running Host or locally installed dsh executable exists. */
+export class DshNotInstalledError extends Error {
+  readonly installCommand = DSH_INSTALL_COMMAND
+
+  constructor() {
+    super(`DeepSeek Harness CLI is not installed. Run: ${DSH_INSTALL_COMMAND}`)
+    this.name = 'DshNotInstalledError'
+  }
+}
 
 const hostDescriptionSchema = z.object({
   version: z.string(),
@@ -53,7 +65,7 @@ export class HostManager {
   basePort = 3080
   autoStart: boolean
   executable: string
-  npmSpecifier: string
+  arguments: string[]
   private child: ChildProcess | null = null
   private ownedInfo: HostInfo | null = null
   private readonly options: HostManagerOptions
@@ -62,7 +74,7 @@ export class HostManager {
     this.options = options
     this.autoStart = options.autoStart ?? true
     this.executable = options.executable?.trim() ?? ''
-    this.npmSpecifier = options.npmSpecifier?.trim() || DEFAULT_NPM_SPECIFIER
+    this.arguments = [...(options.arguments ?? [])]
   }
 
   log(line: string): void {
@@ -107,8 +119,9 @@ export class HostManager {
 
   async spawn(port: number): Promise<HostInfo> {
     const command = await this.resolveCommand()
-    const args = [...command.args, 'web', '--host', '127.0.0.1', '--port', String(port)]
-    this.log(`[host-manager] spawn: ${command.label} web --host 127.0.0.1 --port ${String(port)}`)
+    const customArguments = validateArguments(this.arguments)
+    const args = [...command.args, ...customArguments, 'web', '--host', '127.0.0.1', '--port', String(port), '--no-open']
+    this.log(`[host-manager] spawn: ${command.label} web --host 127.0.0.1 --port ${String(port)} --no-open`)
     const launch = platformLaunch(command.bin, args)
     const child = spawnChild(launch.bin, launch.args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -116,8 +129,18 @@ export class HostManager {
       shell: false,
     })
     this.child = child
+    const spawnState: { error: Error | null } = { error: null }
+    let stderrTail = ''
+    child.once('error', (error) => {
+      spawnState.error = error
+      this.log(`[host-manager] failed to launch ${command.label}: ${redact(error.message)}`)
+    })
     child.stdout?.on('data', (chunk: Buffer) => this.log(`[dsh] ${redact(chunk.toString().trimEnd())}`))
-    child.stderr?.on('data', (chunk: Buffer) => this.log(`[dsh:err] ${redact(chunk.toString().trimEnd())}`))
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const raw = chunk.toString()
+      stderrTail = `${stderrTail}${raw}`.slice(-16_384)
+      this.log(`[dsh:err] ${redact(raw.trimEnd())}`)
+    })
     child.on('exit', (code) => {
       this.log(`[host-manager] owned Host exited with code ${String(code)}`)
       if (this.child === child) {
@@ -126,9 +149,17 @@ export class HostManager {
       }
     })
 
-    const deadline = Date.now() + SPAWN_READY_TIMEOUT_MS
+    const readyTimeout = this.options.spawnReadyTimeoutMs ?? SPAWN_READY_TIMEOUT_MS
+    const deadline = Date.now() + readyTimeout
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) throw new Error(`DeepSeek Harness Host exited during startup (code ${String(child.exitCode)})`)
+      if (spawnState.error !== null) {
+        if (this.child === child) this.child = null
+        throw new Error(`Unable to launch DeepSeek Harness Host with ${command.label}: ${spawnState.error.message}`)
+      }
+      if (child.exitCode !== null) {
+        const detail = summarizeStderr(stderrTail)
+        throw new Error(`DeepSeek Harness Host exited during startup (code ${String(child.exitCode)})${detail === '' ? '' : `: ${detail}`}`)
+      }
       const description = await this.probeDescription(port)
       if (description !== null) {
         const info: HostInfo = { port, pid: child.pid, spawnedByUs: true, version: description.version }
@@ -138,8 +169,11 @@ export class HostManager {
       }
       await new Promise((resolve) => setTimeout(resolve, SPAWN_POLL_MS))
     }
-    if (this.child === child) child.kill()
-    throw new Error(`DeepSeek Harness Host did not become ready on port ${String(port)} within ${String(SPAWN_READY_TIMEOUT_MS)}ms`)
+    if (this.child === child) {
+      await terminateChild(child)
+      if (this.child === child) this.child = null
+    }
+    throw new Error(`DeepSeek Harness Host did not become ready on port ${String(port)} within ${String(readyTimeout)}ms`)
   }
 
   /** Version is diagnostic only. Structural probes decide compatibility. */
@@ -193,29 +227,27 @@ export class HostManager {
 
   private async resolveCommand(): Promise<{ bin: string; args: string[]; label: string }> {
     if (this.executable !== '') {
-      await access(this.executable)
-      const direct = await directNpmCli(this.executable, '@deepseek-ai/dsh/lib/bin.js')
+      const executable = await resolveConfiguredExecutable(this.executable)
+      const direct = await directNpmCli(executable, '@deepseek-ai/dsh/lib/bin.js', ['--expose-internals'])
       if (direct !== null) return { ...direct, label: this.executable }
-      return { bin: this.executable, args: [], label: this.executable }
+      rejectShellShim(executable)
+      return {
+        bin: executable,
+        args: isNodeRuntime(executable) && !this.arguments.includes('--expose-internals') ? ['--expose-internals'] : [],
+        label: this.executable,
+      }
     }
 
     const dsh = await findOnPath('dsh')
     if (dsh !== null) {
-      const direct = await directNpmCli(dsh, '@deepseek-ai/dsh/lib/bin.js')
+      const direct = await directNpmCli(dsh, '@deepseek-ai/dsh/lib/bin.js', ['--expose-internals'])
+      if (direct === null) rejectShellShim(dsh)
       return direct === null
         ? { bin: dsh, args: [], label: 'dsh (PATH)' }
         : { ...direct, label: 'dsh (PATH)' }
     }
 
-    if (!/^(@[a-z0-9._~-]+\/)?[a-z0-9._~-]+(?:@[a-z0-9._~^*+\-]+)?$/i.test(this.npmSpecifier)) {
-      throw new Error('deepseekHarness.host.npmSpecifier is not a safe npm package specifier')
-    }
-    const npx = await findOnPath('npx')
-    if (npx === null) throw new Error('Node.js/npm is required: neither dsh nor npx was found on PATH')
-    const direct = await directNpmCli(npx, 'npm/bin/npx-cli.js')
-    return direct === null
-      ? { bin: npx, args: ['--yes', this.npmSpecifier], label: `npx --yes ${this.npmSpecifier}` }
-      : { bin: direct.bin, args: [...direct.args, '--yes', this.npmSpecifier], label: `npx --yes ${this.npmSpecifier}` }
+    throw new DshNotInstalledError()
   }
 }
 
@@ -242,40 +274,98 @@ async function terminateChild(child: ChildProcess): Promise<void> {
   child.removeListener('exit', resolveExit!)
 }
 
+/** Resolve an explicit executable without invoking a shell. Absolute paths may
+ * contain spaces; otherwise the value must be one plain command name on PATH. */
+async function resolveConfiguredExecutable(value: string): Promise<string> {
+  const executable = value.trim()
+  if (path.isAbsolute(executable)) {
+    await access(executable)
+    return executable
+  }
+  if (executable.includes('/') || executable.includes('\\')) {
+    throw new Error('deepseekHarness.host.executable must be an absolute path or a command name on PATH')
+  }
+  if (/\s|[|&;<>()`\r\n]/u.test(executable)) {
+    throw new Error('deepseekHarness.host.executable must not contain arguments or shell operators; use deepseekHarness.host.arguments')
+  }
+  const resolved = await findOnPath(executable)
+  if (resolved === null) throw new Error(`Configured DeepSeek Harness executable was not found on PATH: ${executable}`)
+  return resolved
+}
+
+/** Extra arguments are passed literally, but cannot interfere with the
+ * extension-owned subcommand, loopback address, or selected port. */
+function validateArguments(values: readonly string[]): string[] {
+  if (!Array.isArray(values)) throw new Error('deepseekHarness.host.arguments must be an array of strings')
+  return values.map((value, index) => {
+    if (typeof value !== 'string') throw new Error(`deepseekHarness.host.arguments[${String(index)}] must be a string`)
+    const normalized = value.toLowerCase()
+    if (normalized === 'web' || normalized === '--' || /^--(?:host|port)(?:=|$)/u.test(normalized)) {
+      throw new Error(`deepseekHarness.host.arguments[${String(index)}] cannot override the managed web host or port`)
+    }
+    return value
+  })
+}
+
+/** Batch and PowerShell shims require another command interpreter, which
+ * would make otherwise literal user arguments subject to shell parsing. Known
+ * npm shims are converted to their JavaScript entrypoint before this check. */
+function rejectShellShim(executable: string): void {
+  if (/\.(?:cmd|bat|ps1)$/iu.test(executable)) {
+    throw new Error(`Cannot safely launch shell shim ${executable}; configure its underlying executable and script path separately`)
+  }
+}
+
 /** npm's Windows shims create a wrapper process. Resolve known JS entrypoints
  * so the owned ChildProcess is the actual Host and can be stopped reliably. */
-async function directNpmCli(shim: string, relativeCli: string): Promise<{ bin: string; args: string[] } | null> {
-  if (process.platform !== 'win32' || !/\.(?:cmd|bat|ps1)$/iu.test(shim)) return null
-  const cli = path.join(path.dirname(shim), 'node_modules', ...relativeCli.split('/'))
+async function directNpmCli(
+  shim: string,
+  relativeCli: string,
+  nodeArguments: readonly string[] = [],
+): Promise<{ bin: string; args: string[] } | null> {
+  let cli: string
+  if (process.platform === 'win32' && /\.(?:cmd|bat|ps1)$/iu.test(shim)) {
+    cli = path.join(path.dirname(shim), 'node_modules', ...relativeCli.split('/'))
+  } else {
+    try {
+      const target = await realpath(shim)
+      const expectedSuffix = path.normalize(relativeCli)
+      if (!path.normalize(target).endsWith(expectedSuffix)) return null
+      cli = target
+    } catch {
+      return null
+    }
+  }
   try {
     await access(cli)
   } catch {
     return null
   }
-  const adjacentNode = path.join(path.dirname(shim), 'node.exe')
+  const node = await resolveNodeRuntime(path.dirname(shim))
+  return { bin: node, args: [...nodeArguments, cli] }
+}
+
+async function resolveNodeRuntime(shimDirectory: string): Promise<string> {
+  const adjacentNode = path.join(shimDirectory, process.platform === 'win32' ? 'node.exe' : 'node')
   try {
     await access(adjacentNode)
-    return { bin: adjacentNode, args: [cli] }
+    return adjacentNode
   } catch {
-    return { bin: process.execPath, args: [cli] }
+    const fromPath = await findOnPath('node')
+    if (fromPath !== null) {
+      rejectShellShim(fromPath)
+      return fromPath
+    }
+    return process.execPath
   }
 }
 
-/** Launch npm's Windows cmd/PowerShell shims without enabling Node's shell
- * mode. Every argument remains generated or validated by HostManager. */
 function platformLaunch(bin: string, args: string[]): { bin: string; args: string[] } {
-  if (process.platform !== 'win32') return { bin, args }
-  if (/\.ps1$/iu.test(bin)) {
-    return {
-      bin: 'powershell.exe',
-      args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', bin, ...args],
-    }
-  }
-  if (!/\.(?:cmd|bat)$/iu.test(bin)) return { bin, args }
-  return {
-    bin: process.env['ComSpec'] ?? 'C:\\Windows\\System32\\cmd.exe',
-    args: ['/d', '/c', bin, ...args],
-  }
+  return { bin, args }
+}
+
+function isNodeRuntime(executable: string): boolean {
+  return /^node(?:\.exe)?$/iu.test(path.basename(executable))
 }
 
 async function findOnPath(name: string): Promise<string | null> {
@@ -310,4 +400,22 @@ async function findOnPath(name: string): Promise<string | null> {
 /** Defensive log redaction for common credential-looking assignments. */
 function redact(line: string): string {
   return line.replace(/((?:api[_-]?key|token|secret|authorization)\s*[=:]\s*)\S+/giu, '$1<redacted>')
+}
+
+function summarizeStderr(stderr: string): string {
+  const lines = redact(stderr).split(/\r?\n/u).map((line) => line.trim()).filter(Boolean)
+  const error = lines.find((line) => /^Error:/u.test(line))
+    ?? lines.find((line) => /(?:failed|required|not found|E[A-Z_]+)/u.test(line))
+    ?? lines.at(-1)
+    ?? ''
+  return error.slice(0, 600)
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const stderr = (error as Error & { stderr?: unknown }).stderr
+    const detail = typeof stderr === 'string' ? summarizeStderr(stderr) : ''
+    return detail === '' ? error.message : `${error.message}: ${detail}`
+  }
+  return String(error)
 }

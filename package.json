@@ -114,12 +114,15 @@
         "deepseekHarness.host.executable": {
           "type": "string",
           "default": "",
-          "description": "Optional explicit path to the dsh executable."
+          "description": "Optional absolute path or PATH command name for the dsh executable."
         },
-        "deepseekHarness.host.npmSpecifier": {
-          "type": "string",
-          "default": "@deepseek-ai/dsh@latest",
-          "description": "Package specifier used by the npx fallback."
+        "deepseekHarness.host.arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Arguments inserted after the configured executable and before the dsh web command. Shell command strings are not supported."
         },
         "deepseekHarness.host.keepAliveOnExit": {
           "type": "boolean",
@@ -147,7 +150,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "test": "node esbuild.config.mjs --tests && node --test .temp/test-dist/*.test.mjs",
     "test:e2e": "npm run build:webview && node esbuild.config.mjs --e2e && playwright test",
-    "test:vscode": "node ./tests/vscode/run.mjs",
+    "test:vscode": "npm run build:extension && node ./tests/vscode/run.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "package": "vsce package --no-dependencies --allow-missing-repository"
   },

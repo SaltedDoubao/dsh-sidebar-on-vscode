@@ -5,6 +5,7 @@ artifacts
 PROGRESS.md
 .gitignore
 .temp
+.pnpm-store
 .vscode-test
 test-results
 playwright-report
