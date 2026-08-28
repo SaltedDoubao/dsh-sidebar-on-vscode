@@ -1,8 +1,8 @@
 {
   "name": "deepseek-harness-vscode",
-  "displayName": "DeepSeek Harness",
+  "displayName": "DSH Sidebar on VSCode",
   "description": "A secure, capability-aware VS Code client for DeepSeek Harness.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "local",
   "license": "MIT",
   "private": true,
@@ -21,7 +21,7 @@
       "activitybar": [
         {
           "id": "deepseekHarness",
-          "title": "DeepSeek Harness",
+          "title": "DSH Sidebar on VSCode",
           "icon": "resources/icon.svg"
         }
       ]
@@ -30,7 +30,7 @@
       "deepseekHarness": [
         {
           "id": "deepseekHarness.sidebar",
-          "name": "DeepSeek Harness",
+          "name": "DSH Sidebar on VSCode",
           "type": "webview"
         }
       ]
@@ -39,47 +39,47 @@
       {
         "command": "deepseekHarness.newChat",
         "title": "New Chat",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.openSettings",
         "title": "Open Settings",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.openFullPanel",
         "title": "Open Full Panel",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.insertSelection",
         "title": "Insert Selection into Chat",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.insertActiveFile",
         "title": "Insert Active File into Chat",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.exportSession",
         "title": "Export Session",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.stopHost",
         "title": "Stop Host",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.restartHost",
         "title": "Restart Host",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       },
       {
         "command": "deepseekHarness.showLogs",
         "title": "Show Logs",
-        "category": "DeepSeek Harness"
+        "category": "DSH Sidebar on VSCode"
       }
     ],
     "menus": {
@@ -97,7 +97,7 @@
       ]
     },
     "configuration": {
-      "title": "DeepSeek Harness",
+      "title": "DSH Sidebar on VSCode",
       "properties": {
         "deepseekHarness.host.basePort": {
           "type": "number",

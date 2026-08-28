@@ -1,4 +1,6 @@
-# DeepSeek Harness for VS Code
+# DSH Sidebar on VSCode
+
+[简体中文](README.md) | [English](README_en.md)
 
 在 VS Code 独立侧边栏中使用本地 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。扩展负责发现或启动 loopback Host，并通过经过校验的扩展宿主桥接会话、事件、审批、设置与导出；Webview 不直接访问网络、文件系统或密钥。
 
@@ -26,7 +28,7 @@ npm run package
 
 ### 设置
 
-点击侧边栏右上角的设置按钮，或运行 `DeepSeek Harness: Open Settings`，会在当前编辑器区域打开独立的设置标签。重复打开会复用同一标签并刷新 Host 权威数据。页面提供通用设置、模型提供方、插件和 Agent 预设；Host 启动参数等扩展级高级选项仍位于 VS Code 原生 Settings。
+点击侧边栏右上角的设置按钮，或运行 `DSH Sidebar on VSCode: Open Settings`，会在当前编辑器区域打开独立的设置标签。重复打开会复用同一标签并刷新 Host 权威数据。页面提供通用设置、模型提供方、插件和 Agent 预设；Host 启动参数等扩展级高级选项仍位于 VS Code 原生 Settings。
 
 ### 自定义 Host 启动命令
 
@@ -51,3 +53,7 @@ Host 在首次打开侧边栏时按需启动。扩展先复用兼容的 loopback
 ## 来源
 
 UI 与部分测试结构选择性派生自 MIT 项目 `MmMmaru/dsh-vscode-sidebar`；连接层以 DeepSeek Harness 当前官方协议重建。详见包内的 `THIRD_PARTY_NOTICES.md` 与源码树中的 `docs/UPSTREAM.md`。
+
+## 许可证
+
+本项目采用 [MIT](LICENSE) 许可证分发与使用。详细条款见 [LICENSE](LICENSE)。
