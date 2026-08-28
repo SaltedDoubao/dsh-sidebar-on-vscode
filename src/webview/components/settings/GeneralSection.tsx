@@ -22,6 +22,7 @@ function OptionRow<K extends keyof UiPrefs>({ label, description, prefKey, optio
   const value = useAppStore((s) => s.uiPrefs[prefKey])
   const source = useAppStore((s) => s.uiPrefSources[prefKey])
   const setUiPref = useAppStore((s) => s.setUiPref)
+  const language = useAppStore((s) => s.uiPrefs.language)
   const [failure, setFailure] = useState<string | null>(null)
 
   const select = (next: UiPrefs[K]): void => {
@@ -49,17 +50,60 @@ function OptionRow<K extends keyof UiPrefs>({ label, description, prefKey, optio
           </button>
         ))}
       </div>
-      {failure !== null && <p className="settings-error">{`保存失败：${failure}`}</p>}
+      {failure !== null && <p className="settings-error">{`${language === 'zh' ? '保存失败' : 'Save failed'}: ${failure}`}</p>}
     </div>
   )
 }
 
 export function GeneralSection(): JSX.Element {
+  const language = useAppStore((state) => state.uiPrefs.language)
+  const presets = useAppStore((state) => state.presets)
+  const defaultPresetId = useAppStore((state) => state.defaultPresetId)
+  const selectDefaultPreset = useAppStore((state) => state.selectDefaultPreset)
+  const settingsWritable = useAppStore((state) => state.settingsWritable)
+  const [presetBusy, setPresetBusy] = useState(false)
+  const [presetFailure, setPresetFailure] = useState<string | null>(null)
+  const zh = language === 'zh'
+
+  const selectPreset = (id: string): void => {
+    if (id === defaultPresetId || presetBusy) return
+    setPresetBusy(true)
+    setPresetFailure(null)
+    void selectDefaultPreset(id)
+      .catch((error: unknown) => setPresetFailure(error instanceof Error ? error.message : String(error)))
+      .finally(() => setPresetBusy(false))
+  }
+
   return (
     <div className="settings-section" data-region="GeneralSection">
-      <h2 className="settings-section-title">通用</h2>
+      <h2 className="settings-section-title">{zh ? '通用设置' : 'General'}</h2>
+      <p className="settings-section-intro">{zh ? '管理新会话的默认行为和界面偏好。' : 'Manage defaults for new sessions and interface preferences.'}</p>
+      <div className="settings-field">
+        <div className="settings-field-label">{zh ? 'Agent 预设' : 'Agent preset'}</div>
+        <div className="settings-field-desc">{zh ? '对之后新建的会话生效，运行中的会话保持原预设。' : 'Applies to new sessions; running sessions keep their current preset.'}</div>
+        <select
+          className="settings-input"
+          value={defaultPresetId}
+          disabled={presetBusy || !settingsWritable || presets.length === 0}
+          aria-label={zh ? 'Agent 预设' : 'Agent preset'}
+          onChange={(event) => selectPreset(event.target.value)}
+        >
+          {presets.map((preset) => <option key={preset.id} value={preset.id} disabled={preset.broken !== undefined}>{preset.name ?? preset.id}</option>)}
+        </select>
+        {presetFailure !== null && <p className="settings-error">{presetFailure}</p>}
+      </div>
       <OptionRow
-        label="语言"
+        label={zh ? '权限' : 'Permission'}
+        description={zh ? '选择新会话的默认权限模式。' : 'Default permission mode for new sessions.'}
+        prefKey="permissionMode"
+        options={[
+          { value: 'read-only', label: 'Read Only' },
+          { value: 'workspace-write', label: 'Workspace Write' },
+          { value: 'full-access', label: 'Full Access' },
+        ]}
+      />
+      <OptionRow
+        label={zh ? '语言' : 'Language'}
         prefKey="language"
         options={[
           { value: 'zh', label: '中文' },
@@ -67,30 +111,21 @@ export function GeneralSection(): JSX.Element {
         ]}
       />
       <OptionRow
-        label="外观"
+        label={zh ? '外观' : 'Appearance'}
         prefKey="appearance"
         options={[
-          { value: 'vscode', label: '跟随 VSCode' },
-          { value: 'light', label: '浅色' },
-          { value: 'dark', label: '深色' },
+          { value: 'vscode', label: zh ? '跟随 VS Code' : 'VS Code' },
+          { value: 'light', label: zh ? '浅色' : 'Light' },
+          { value: 'dark', label: zh ? '深色' : 'Dark' },
         ]}
       />
       <OptionRow
-        label="繁忙时 Enter 键行为"
-        description="仅在智能体运行时生效"
+        label={zh ? '繁忙时 Enter 键行为' : 'Enter while busy'}
+        description={zh ? '仅在智能体运行时生效。' : 'Only applies while the agent is running.'}
         prefKey="busyEnter"
         options={[
-          { value: 'queue', label: '排队发送' },
-          { value: 'steer', label: '立即插话' },
-        ]}
-      />
-      <OptionRow
-        label="新会话默认权限模式"
-        prefKey="permissionMode"
-        options={[
-          { value: 'read-only', label: 'Read Only' },
-          { value: 'workspace-write', label: 'Workspace Write' },
-          { value: 'full-access', label: 'Full access' },
+          { value: 'queue', label: zh ? '排队发送' : 'Queue' },
+          { value: 'steer', label: zh ? '立即插话' : 'Steer' },
         ]}
       />
     </div>

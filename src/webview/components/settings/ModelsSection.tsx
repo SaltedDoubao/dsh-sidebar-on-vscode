@@ -34,6 +34,7 @@ function providerLabel(target: ProviderTarget): string {
 
 export function ModelsSection(): JSX.Element {
   const providers = useAppStore((s) => s.providers)
+  const language = useAppStore((s) => s.uiPrefs.language)
   const namespaces = useAppStore((s) => s.namespaces)
   const credentials = useAppStore((s) => s.credentials)
   const settingsWritable = useAppStore((s) => s.settingsWritable)
@@ -49,6 +50,7 @@ export function ModelsSection(): JSX.Element {
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
   const [savedName, setSavedName] = useState<string | null>(null)
   const [dismissedSetup, setDismissedSetup] = useState<ReadonlySet<string>>(new Set())
+  const zh = language === 'zh'
 
   /** The credential ref one provider's profile resolves keys through. */
   const refOf = (provider: ConfigurableProviderView): string => {
@@ -127,11 +129,11 @@ export function ModelsSection(): JSX.Element {
 
   return (
     <div className="settings-section" data-region="ModelsSection">
-      <h2 className="settings-section-title">模型</h2>
-      <p className="settings-section-intro">填入各提供方的 API 密钥即可使用其模型。</p>
-      {!settingsWritable && <p className="settings-notice">设置为只读：当前环境不允许修改。</p>}
+      <h2 className="settings-section-title">{zh ? '模型' : 'Models'}</h2>
+      <p className="settings-section-intro">{zh ? '填入各提供方的 API 密钥即可使用其模型。' : 'Add a provider API key to use its models.'}</p>
+      {!settingsWritable && <p className="settings-notice">{zh ? '设置为只读：当前环境不允许修改。' : 'Settings are read-only in this environment.'}</p>}
       {savedName !== null && (
-        <p className="settings-saved" role="status" aria-live="polite">{`已保存 ${savedName}`}</p>
+        <p className="settings-saved" role="status" aria-live="polite">{`${zh ? '已保存' : 'Saved'} ${savedName}`}</p>
       )}
       <ul className="settings-provider-list">
         {providers.map((provider) => {
@@ -156,26 +158,26 @@ export function ModelsSection(): JSX.Element {
                   <span
                     className={`settings-dot ${configured ? 'settings-dot-ok' : 'settings-dot-missing'}`}
                     role="img"
-                    aria-label={configured ? '已配置' : '未配置'}
-                    title={configured ? '已配置' : '未配置'}
+                    aria-label={configured ? (zh ? '已配置' : 'Configured') : (zh ? '未配置' : 'Not configured')}
+                    title={configured ? (zh ? '已配置' : 'Configured') : (zh ? '未配置' : 'Not configured')}
                   />
                   <span className="settings-provider-name">{provider.displayName}</span>
-                  {provider.declared === true && <span className="settings-tag">自定义</span>}
+                  {provider.declared === true && <span className="settings-tag">{zh ? '自定义' : 'Custom'}</span>}
                 </span>
                 <span className="settings-provider-actions">
                   <button
                     type="button"
                     className="settings-btn settings-btn-small"
-                    aria-label={`编辑 ${providerLabel(target)}`}
+                    aria-label={`${zh ? '编辑' : 'Edit'} ${providerLabel(target)}`}
                     onClick={() => { startEdit(provider) }}
                   >
-                    编辑
+                    {zh ? '编辑' : 'Edit'}
                   </button>
                   {provider.declared === true && (
                     <button
                       type="button"
                       className="settings-btn settings-btn-small settings-btn-danger"
-                      aria-label={`删除 ${providerLabel(target)}`}
+                      aria-label={`${zh ? '删除' : 'Delete'} ${providerLabel(target)}`}
                       disabled={!settingsWritable}
                       onClick={() => {
                         setSavedName(null)
@@ -183,7 +185,7 @@ export function ModelsSection(): JSX.Element {
                         setDeleteTarget(target)
                       }}
                     >
-                      删除
+                      {zh ? '删除' : 'Delete'}
                     </button>
                   )}
                 </span>
@@ -192,7 +194,7 @@ export function ModelsSection(): JSX.Element {
             </li>
           )
         })}
-        {providers.length === 0 && <li className="settings-empty">没有可用的提供方。</li>}
+        {providers.length === 0 && <li className="settings-empty">{zh ? '没有可用的提供方。' : 'No providers are available.'}</li>}
       </ul>
       <div className="settings-add-block">
         {declaring ? (
@@ -206,11 +208,11 @@ export function ModelsSection(): JSX.Element {
         ) : adding && addTarget !== undefined ? (
           <div className="settings-editor">
             <div className="settings-field">
-              <div className="settings-field-label">提供方</div>
+              <div className="settings-field-label">{zh ? '提供方' : 'Provider'}</div>
               <select
                 className="settings-input"
                 value={addTarget.provider}
-                aria-label="提供方"
+                aria-label={zh ? '提供方' : 'Provider'}
                 onChange={(e) => { setAddTargetId(e.target.value) }}
               >
                 {addable.map((p) => (
@@ -232,7 +234,7 @@ export function ModelsSection(): JSX.Element {
               disabled={addable.length === 0 || !settingsWritable}
               onClick={startAdd}
             >
-              添加提供方
+              ＋ {zh ? '添加提供方' : 'Add provider'}
             </button>
             <button
               type="button"
@@ -245,18 +247,18 @@ export function ModelsSection(): JSX.Element {
                 setDeclaring(true)
               }}
             >
-              添加自定义提供方
+              ＋ {zh ? '添加自定义提供方' : 'Add custom provider'}
             </button>
           </div>
         )}
       </div>
       {deleteTarget !== null && (
         <ConfirmModal
-          title={`删除 ${providerLabel(deleteTarget)}`}
+          title={`${zh ? '删除' : 'Delete'} ${providerLabel(deleteTarget)}`}
           description={deleteTarget.credentialRef === undefined
-            ? '将删除该提供方的配置。此操作不可撤销。'
-            : '将删除该提供方的配置，并同时移除已保存的 API 密钥。此操作不可撤销。'}
-          confirmLabel={`删除 ${deleteTarget.displayName}`}
+            ? (zh ? '将删除该提供方的配置。此操作不可撤销。' : 'This provider configuration will be removed. This cannot be undone.')
+            : (zh ? '将删除该提供方的配置，并同时移除已保存的 API 密钥。此操作不可撤销。' : 'This provider and its saved API key will be removed. This cannot be undone.')}
+          confirmLabel={`${zh ? '删除' : 'Delete'} ${deleteTarget.displayName}`}
           busy={deleting}
           failure={deleteFailure}
           onConfirm={confirmDelete}

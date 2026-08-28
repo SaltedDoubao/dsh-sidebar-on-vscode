@@ -29,6 +29,7 @@ function valueAt(source: unknown, path: string[]): unknown {
 
 export function ProviderEditorCard({ target, onClose }: ProviderEditorCardProps): JSX.Element {
   const namespace = useAppStore((s) => s.namespaces.find((n) => n.ns === target.settingsNs))
+  const language = useAppStore((s) => s.uiPrefs.language)
   const credential = useAppStore((s) => s.credentials[target.credentialRef ?? deriveKeyRef(target.provider)])
   const mutateSettings = useAppStore((s) => s.mutateSettings)
   const setCredential = useAppStore((s) => s.setCredential)
@@ -47,6 +48,7 @@ export function ProviderEditorCard({ target, onClose }: ProviderEditorCardProps)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const [discovered, setDiscovered] = useState<DiscoveredModelView[] | null>(null)
+  const zh = language === 'zh'
 
   const keyValue = keyDraft.trim()
   const baseURLChanged = baseURLDraft.trim() !== currentBaseURL
@@ -95,14 +97,14 @@ export function ProviderEditorCard({ target, onClose }: ProviderEditorCardProps)
   return (
     <div className="settings-editor" data-region="ProviderEditorCard">
       <div className="settings-field">
-        <div className="settings-field-label">API 密钥</div>
+        <div className="settings-field-label">{zh ? 'API 密钥' : 'API key'}</div>
         <input
           className="settings-input"
           type="password"
           autoComplete="off"
           value={keyDraft}
-          placeholder={credential?.configured === true ? '已配置（输入以更换）' : '输入 API 密钥'}
-          aria-label="API 密钥"
+          placeholder={credential?.configured === true ? (zh ? '已配置（输入以更换）' : 'Configured (enter to replace)') : (zh ? '输入 API 密钥' : 'Enter API key')}
+          aria-label={zh ? 'API 密钥' : 'API key'}
           disabled={busy}
           onChange={(e) => { setKeyDraft(e.target.value) }}
         />
@@ -119,18 +121,18 @@ export function ProviderEditorCard({ target, onClose }: ProviderEditorCardProps)
           onChange={(e) => { setBaseURLDraft(e.target.value) }}
         />
       </div>
-      {failure !== null && <p className="settings-error">{`保存失败：${failure}`}</p>}
+      {failure !== null && <p className="settings-error">{`${zh ? '保存失败' : 'Save failed'}: ${failure}`}</p>}
       {discovered !== null && (
         <p className="settings-plugin-desc">
-          {discovered.length === 0 ? '端点未返回模型。' : `发现 ${discovered.length} 个模型：${discovered.slice(0, 8).map((model) => model.name ?? model.id).join('、')}`}
+          {discovered.length === 0 ? (zh ? '端点未返回模型。' : 'The endpoint returned no models.') : `${zh ? '发现' : 'Found'} ${discovered.length} ${zh ? '个模型' : 'models'}: ${discovered.slice(0, 8).map((model) => model.name ?? model.id).join(zh ? '、' : ', ')}`}
         </p>
       )}
       <div className="settings-editor-actions">
         <button type="button" className="settings-btn" disabled={busy} onClick={() => { void discover() }}>
-          发现模型
+          {zh ? '发现模型' : 'Discover models'}
         </button>
         <button type="button" className="settings-btn" disabled={busy} onClick={() => { onClose(false) }}>
-          取消
+          {zh ? '取消' : 'Cancel'}
         </button>
         <button
           type="button"
@@ -138,7 +140,7 @@ export function ProviderEditorCard({ target, onClose }: ProviderEditorCardProps)
           disabled={busy || !dirty}
           onClick={() => { void save() }}
         >
-          {busy ? '保存中…' : '保存'}
+          {busy ? (zh ? '保存中…' : 'Saving…') : (zh ? '保存' : 'Save')}
         </button>
       </div>
     </div>

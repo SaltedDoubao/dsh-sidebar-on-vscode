@@ -9,6 +9,7 @@ import { useAppStore } from '../../store'
 
 export function PresetsSection(): JSX.Element {
   const presets = useAppStore((s) => s.presets)
+  const language = useAppStore((s) => s.uiPrefs.language)
   const defaultPresetId = useAppStore((s) => s.defaultPresetId)
   const settingsWritable = useAppStore((s) => s.settingsWritable)
   const selectDefaultPreset = useAppStore((s) => s.selectDefaultPreset)
@@ -22,6 +23,7 @@ export function PresetsSection(): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{ id: string; content: string } | null>(null)
+  const zh = language === 'zh'
 
   const select = (id: string): void => {
     if (saving || id === defaultPresetId || !settingsWritable) return
@@ -43,13 +45,13 @@ export function PresetsSection(): JSX.Element {
 
   return (
     <div className="settings-section" data-region="PresetsSection">
-      <h2 className="settings-section-title">Agent 预设</h2>
-      <p className="settings-section-intro">选择此后新建会话的默认预设。运行中的会话保持它开始时的预设。</p>
-      {failure !== null && <p className="settings-error">{`保存失败：${failure}`}</p>}
+      <h2 className="settings-section-title">{zh ? 'Agent 预设' : 'Agent Presets'}</h2>
+      <p className="settings-section-intro">{zh ? '预设是一个会话的 Agent 所运行的插件继承集合，包括工具、提示词与能力。' : 'A preset defines the plugins, tools, prompts, and capabilities available to an agent.'}</p>
+      {failure !== null && <p className="settings-error">{`${zh ? '操作失败' : 'Action failed'}: ${failure}`}</p>}
       {presets.length === 0 ? (
-        <p className="settings-empty">当前部署没有可用的预设。</p>
+        <p className="settings-empty">{zh ? '当前部署没有可用的预设。' : 'No presets are available.'}</p>
       ) : (
-        <ul className="settings-preset-list" role="radiogroup" aria-label="默认预设">
+        <ul className="settings-preset-list" role="radiogroup" aria-label={zh ? '默认预设' : 'Default preset'}>
           {presets.map((preset) => {
             const selected = preset.id === defaultPresetId
             const broken = preset.broken !== undefined
@@ -77,31 +79,34 @@ export function PresetsSection(): JSX.Element {
                     )}
                     {broken && <span className="settings-error">{`不可用：${preset.broken ?? ''}`}</span>}
                   </span>
-                  <span className={`settings-tag${preset.trust === 'user' ? ' settings-tag-user' : ''}`}>
-                    {preset.trust === 'user' ? '本地' : '内置'}
+                  <span className="settings-provider-identity">
+                    {selected && <span className="settings-tag settings-current-tag">{zh ? '当前使用' : 'Current'}</span>}
+                    <span className={`settings-tag${preset.trust === 'user' ? ' settings-tag-user' : ''}`}>
+                      {preset.trust === 'user' ? (zh ? '本地' : 'Local') : (zh ? '内置' : 'Built-in')}
+                    </span>
                   </span>
                 </button>
                 <div className="settings-editor-actions">
                   <button type="button" className="settings-btn" disabled={saving} onClick={() => run(async () => {
                     const result = await readPreset(preset.id)
                     setViewer({ id: preset.id, content: result.content })
-                  })}>查看</button>
+                  })}>{zh ? '查看' : 'View'}</button>
                   {presetAuthorable && (
                     <button type="button" className="settings-btn" disabled={saving} onClick={() => {
-                      const id = window.prompt('新预设标识')?.trim()
+                      const id = window.prompt(zh ? '新预设标识' : 'New preset ID')?.trim()
                       if (id !== undefined && id !== '') run(() => copyPreset(preset.id, id))
-                    }}>复制</button>
+                    }}>{zh ? '复制' : 'Copy'}</button>
                   )}
                   {preset.trust === 'user' && (
                     <button type="button" className="settings-btn" disabled={saving} onClick={() => run(async () => {
                       const fallback = await openPreset(preset.id)
-                      if (fallback !== null) window.alert(`预设目录：${fallback}`)
-                    })}>{presetHasDocument ? '打开目录' : '显示目录'}</button>
+                      if (fallback !== null) window.alert(`${zh ? '预设目录' : 'Preset directory'}: ${fallback}`)
+                    })}>{presetHasDocument ? (zh ? '打开目录' : 'Open directory') : (zh ? '显示目录' : 'Show directory')}</button>
                   )}
                   {preset.trust === 'user' && (
                     <button type="button" className="settings-btn settings-btn-danger" disabled={saving} onClick={() => {
-                      if (window.confirm(`删除本地预设「${preset.name ?? preset.id}」？`)) run(() => removePreset(preset.id))
-                    }}>删除</button>
+                      if (window.confirm(zh ? `删除本地预设「${preset.name ?? preset.id}」？` : `Delete local preset “${preset.name ?? preset.id}”?`)) run(() => removePreset(preset.id))
+                    }}>{zh ? '删除' : 'Delete'}</button>
                   )}
                 </div>
               </li>
@@ -109,11 +114,18 @@ export function PresetsSection(): JSX.Element {
           })}
         </ul>
       )}
+      {presetAuthorable && presets[0] !== undefined && (
+        <button type="button" className="settings-create-preset" disabled={saving} onClick={() => {
+          const source = presets.find((preset) => preset.id === defaultPresetId) ?? presets[0]
+          const id = window.prompt(zh ? '新预设标识' : 'New preset ID')?.trim()
+          if (source !== undefined && id !== undefined && id !== '') run(() => copyPreset(source.id, id, zh ? '自定义预设' : 'Custom preset'))
+        }}>＋ {zh ? '用「当前预设」创建自定义预设' : 'Create a custom preset from the current preset'}</button>
+      )}
       {viewer !== null && (
         <div className="settings-editor">
           <div className="settings-plugin-head">
             <strong>{viewer.id}</strong>
-            <button type="button" className="settings-btn" onClick={() => setViewer(null)}>关闭</button>
+            <button type="button" className="settings-btn" onClick={() => setViewer(null)}>{zh ? '关闭' : 'Close'}</button>
           </div>
           <pre className="settings-preset-source">{viewer.content}</pre>
         </div>

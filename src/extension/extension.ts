@@ -10,6 +10,7 @@ let host: HostManager | null = null
 let adapter: DshAdapter | null = null
 let lease: HostLeaseCoordinator | null = null
 let output: vscode.OutputChannel | null = null
+let settingsPanel: vscode.WebviewPanel | null = null
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const log = vscode.window.createOutputChannel('DeepSeek Harness', { log: true })
@@ -30,7 +31,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const client = new DshClient()
   client.onLog = (line) => log.appendLine(line)
   const dshAdapter = new DshAdapter(client)
-  const bridge = new Bridge(dshAdapter, hostManager, context)
+  let bridge!: Bridge
+  bridge = new Bridge(dshAdapter, hostManager, context, {
+    openSettings: () => openSettingsPanel(context, bridge),
+    closeSettings: () => settingsPanel?.dispose(),
+  })
   const provider = new SidebarProvider(context, bridge)
 
   host = hostManager
@@ -50,8 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (target !== null) bridge.postCommand('newChat', [target])
     }),
     vscode.commands.registerCommand('deepseekHarness.openSettings', async () => {
-      const target = await reveal()
-      if (target !== null) bridge.postCommand('openSettings', [target])
+      openSettingsPanel(context, bridge)
     }),
     vscode.commands.registerCommand('deepseekHarness.openFullPanel', () => openFullPanel(context, bridge)),
     vscode.commands.registerCommand('deepseekHarness.insertSelection', async () => {
@@ -87,6 +91,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+  settingsPanel?.dispose()
+  settingsPanel = null
   await adapter?.dispose()
   const coordinator = lease
   const lastWindow = coordinator === null ? true : await coordinator.releaseAndIsLast()
@@ -97,6 +103,31 @@ export async function deactivate(): Promise<void> {
   adapter = null
   lease = null
   output = null
+}
+
+function openSettingsPanel(context: vscode.ExtensionContext, bridge: Bridge): void {
+  if (settingsPanel !== null) {
+    settingsPanel.reveal(vscode.ViewColumn.Active, false)
+    bridge.refreshSettings(settingsPanel.webview)
+    return
+  }
+  const panel = vscode.window.createWebviewPanel(
+    'deepseekHarness.settings',
+    'DeepSeek Harness 设置',
+    vscode.ViewColumn.Active,
+    {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
+      retainContextWhenHidden: true,
+    },
+  )
+  settingsPanel = panel
+  panel.webview.html = renderHtml(panel.webview, context.extensionUri, 'settings')
+  const attached = bridge.attach(panel.webview, 'settings')
+  panel.onDidDispose(() => {
+    attached.dispose()
+    if (settingsPanel === panel) settingsPanel = null
+  })
 }
 
 function openFullPanel(context: vscode.ExtensionContext, bridge: Bridge): void {
@@ -111,6 +142,6 @@ function openFullPanel(context: vscode.ExtensionContext, bridge: Bridge): void {
     },
   )
   panel.webview.html = renderHtml(panel.webview, context.extensionUri)
-  const attached = bridge.attach(panel.webview)
+  const attached = bridge.attach(panel.webview, 'chat')
   panel.onDidDispose(() => attached.dispose())
 }

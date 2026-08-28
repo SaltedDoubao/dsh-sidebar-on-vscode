@@ -35,6 +35,8 @@ const HOST_BASE_PORT = 3200
 export interface Harness {
   /** URL of the served webview page (index.html + media bundle). */
   pageUrl: string
+  /** Independent editor settings webview URL. */
+  settingsPageUrl: string
   /** Real workspace root the stub reports (realpath of the plugin dir). */
   workspacePath: string
   /** A real temp directory used as the "foreign workspace" in isolation tests. */
@@ -126,7 +128,7 @@ export async function startHarness(): Promise<Harness> {
 
   // --- static file server + webview WebSocket bridge (one port) ---
   const mediaDir = path.resolve(process.cwd(), 'media')
-  const pageHtml = (port: number): string => `<!DOCTYPE html>
+  const pageHtml = (port: number, surface: 'chat' | 'settings'): string => `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -134,7 +136,7 @@ export async function startHarness(): Promise<Harness> {
   <link rel="stylesheet" href="/style.css">
   <title>DSH E2E</title>
 </head>
-<body>
+<body data-dsh-surface="${surface}">
   <div id="root"></div>
   <script>
     // E2E bridge adapter: stands in for the VSCode webview host. The app's
@@ -143,7 +145,7 @@ export async function startHarness(): Promise<Harness> {
     // like the real VSCode webview message channel. Messages posted before
     // the socket opens (the app sends "ready" at boot) are queued.
     (function () {
-      const ws = new WebSocket('ws://127.0.0.1:' + ${port} + '/ws')
+      const ws = new WebSocket('ws://127.0.0.1:' + ${port} + '/ws?surface=${surface}')
       const queue = []
       window.__e2eWs = ws
       window.acquireVsCodeApi = function () {
@@ -171,13 +173,13 @@ export async function startHarness(): Promise<Harness> {
 </html>`
 
   const server = createServer((req, res) => {
-    const url = req.url ?? '/'
-    if (url === '/') {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if (url.pathname === '/' || url.pathname === '/settings') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      res.end(pageHtml(serverPort()))
+      res.end(pageHtml(serverPort(), url.pathname === '/settings' ? 'settings' : 'chat'))
       return
     }
-    const file = url === '/main.js' ? 'main.js' : url === '/style.css' ? 'style.css' : null
+    const file = url.pathname === '/main.js' ? 'main.js' : url.pathname === '/style.css' ? 'style.css' : null
     if (file === null) {
       res.writeHead(404)
       res.end('not found')
@@ -200,12 +202,13 @@ export async function startHarness(): Promise<Harness> {
   const wss = new WebSocketServer({ server, path: '/ws' })
   /** The most recently attached page webview (for test-driven pushes). */
   let latestWebview: StubWebview | null = null
-  wss.on('connection', (socket: WebSocket) => {
+  wss.on('connection', (socket: WebSocket, request) => {
     const webview = createStubWebview((message) => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'host', message }))
     })
     latestWebview = webview
-    const attached = bridge.attach(webview as unknown as Parameters<Bridge['attach']>[0])
+    const surface = new URL(request.url ?? '/ws', 'http://127.0.0.1').searchParams.get('surface') === 'settings' ? 'settings' : 'chat'
+    const attached = bridge.attach(webview as unknown as Parameters<Bridge['attach']>[0], surface)
     socket.on('message', (raw) => {
       try {
         const data = JSON.parse(String(raw)) as { type?: string; message?: WebviewMessage }
@@ -247,6 +250,7 @@ export async function startHarness(): Promise<Harness> {
 
   return {
     pageUrl: `http://127.0.0.1:${serverPort()}/`,
+    settingsPageUrl: `http://127.0.0.1:${serverPort()}/settings`,
     workspacePath,
     foreignPath,
     ensureWarm,

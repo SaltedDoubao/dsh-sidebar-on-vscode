@@ -4,6 +4,7 @@
  */
 
 import { useEffect, type JSX } from 'react'
+import { useAppStore } from '../../store'
 
 export interface ConfirmModalProps {
   title: string
@@ -17,6 +18,7 @@ export interface ConfirmModalProps {
 }
 
 export function ConfirmModal(props: ConfirmModalProps): JSX.Element {
+  const zh = useAppStore((state) => state.uiPrefs.language) === 'zh'
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && !props.busy) props.onCancel()
@@ -40,7 +42,7 @@ export function ConfirmModal(props: ConfirmModalProps): JSX.Element {
         {props.failure != null && props.failure !== '' && <p className="settings-error">{props.failure}</p>}
         <div className="settings-confirm-actions">
           <button type="button" className="settings-btn" disabled={props.busy} onClick={props.onCancel}>
-            取消
+            {zh ? '取消' : 'Cancel'}
           </button>
           <button
             type="button"
@@ -48,7 +50,7 @@ export function ConfirmModal(props: ConfirmModalProps): JSX.Element {
             disabled={props.busy}
             onClick={props.onConfirm}
           >
-            {props.busy ? '删除中…' : props.confirmLabel}
+            {props.busy ? (zh ? '删除中…' : 'Deleting…') : props.confirmLabel}
           </button>
         </div>
       </div>

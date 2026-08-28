@@ -19,6 +19,7 @@ const PROTOCOLS = ['openai', 'anthropic'] as const
 
 export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps): JSX.Element {
   const namespace = useAppStore((s) => s.namespaces.find((n) => n.ns === 'llm-pi-ai'))
+  const language = useAppStore((s) => s.uiPrefs.language)
   const mutateSettings = useAppStore((s) => s.mutateSettings)
   const setCredential = useAppStore((s) => s.setCredential)
 
@@ -29,14 +30,15 @@ export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps):
   const [keyDraft, setKeyDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const zh = language === 'zh'
 
   const routeId = id.trim()
   const idFailure = routeId.length === 0
     ? null
     : !/^[a-z0-9][a-z0-9-]*$/.test(routeId)
-      ? '标识只能包含小写字母、数字与连字符'
+      ? (zh ? '标识只能包含小写字母、数字与连字符' : 'Use lowercase letters, numbers, and hyphens only')
       : taken.includes(routeId)
-        ? '该标识已被占用'
+        ? (zh ? '该标识已被占用' : 'This ID is already in use')
         : null
   const canSubmit = routeId.length > 0 && idFailure === null && baseURL.trim().length > 0 && !busy
 
@@ -67,26 +69,26 @@ export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps):
   return (
     <div className="settings-editor" data-region="CustomProviderCard">
       <div className="settings-field">
-        <div className="settings-field-label">提供方标识</div>
+        <div className="settings-field-label">{zh ? '提供方标识' : 'Provider ID'}</div>
         <input
           className="settings-input"
           type="text"
           value={id}
-          placeholder="例如 my-lab"
-          aria-label="提供方标识"
+          placeholder={zh ? '例如 my-lab' : 'e.g. my-lab'}
+          aria-label={zh ? '提供方标识' : 'Provider ID'}
           disabled={busy}
           onChange={(e) => { setId(e.target.value) }}
         />
         {idFailure !== null && <p className="settings-error">{idFailure}</p>}
       </div>
       <div className="settings-field">
-        <div className="settings-field-label">显示名称</div>
+        <div className="settings-field-label">{zh ? '显示名称' : 'Display name'}</div>
         <input
           className="settings-input"
           type="text"
           value={displayName}
-          placeholder={routeId || '同标识'}
-          aria-label="显示名称"
+          placeholder={routeId || (zh ? '同标识' : 'Same as ID')}
+          aria-label={zh ? '显示名称' : 'Display name'}
           disabled={busy}
           onChange={(e) => { setDisplayName(e.target.value) }}
         />
@@ -104,11 +106,11 @@ export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps):
         />
       </div>
       <div className="settings-field">
-        <div className="settings-field-label">协议</div>
+        <div className="settings-field-label">{zh ? '协议' : 'Protocol'}</div>
         <select
           className="settings-input"
           value={api}
-          aria-label="协议"
+          aria-label={zh ? '协议' : 'Protocol'}
           disabled={busy}
           onChange={(e) => { setApi(e.target.value) }}
         >
@@ -116,22 +118,22 @@ export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps):
         </select>
       </div>
       <div className="settings-field">
-        <div className="settings-field-label">API 密钥（可选）</div>
+        <div className="settings-field-label">{zh ? 'API 密钥（可选）' : 'API key (optional)'}</div>
         <input
           className="settings-input"
           type="password"
           autoComplete="off"
           value={keyDraft}
-          placeholder="可稍后再填"
-          aria-label="API 密钥"
+          placeholder={zh ? '可稍后再填' : 'Can be added later'}
+          aria-label={zh ? 'API 密钥' : 'API key'}
           disabled={busy}
           onChange={(e) => { setKeyDraft(e.target.value) }}
         />
       </div>
-      {failure !== null && <p className="settings-error">{`保存失败：${failure}`}</p>}
+      {failure !== null && <p className="settings-error">{`${zh ? '保存失败' : 'Save failed'}: ${failure}`}</p>}
       <div className="settings-editor-actions">
         <button type="button" className="settings-btn" disabled={busy} onClick={() => { onClose(false) }}>
-          取消
+          {zh ? '取消' : 'Cancel'}
         </button>
         <button
           type="button"
@@ -139,7 +141,7 @@ export function CustomProviderCard({ taken, onClose }: CustomProviderCardProps):
           disabled={!canSubmit}
           onClick={() => { void save() }}
         >
-          {busy ? '保存中…' : '添加'}
+          {busy ? (zh ? '保存中…' : 'Saving…') : (zh ? '添加' : 'Add')}
         </button>
       </div>
     </div>
