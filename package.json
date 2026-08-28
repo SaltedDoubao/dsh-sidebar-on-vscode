@@ -6,6 +6,10 @@
   "publisher": "local",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SaltedDoubao/dsh-sidebar-on-vscode.git"
+  },
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.95.0"
