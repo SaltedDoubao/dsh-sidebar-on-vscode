@@ -1,0 +1,9 @@
+node_modules/
+dist/
+media/
+.temp/
+.vscode-test/
+test-results/
+playwright-report/
+*.vsix
+*.log
