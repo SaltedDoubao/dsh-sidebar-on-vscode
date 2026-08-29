@@ -2,10 +2,10 @@
   "name": "dsh-sidebar-on-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "SaltedDoubao",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/SaltedDoubao/dsh-sidebar-on-vscode.git"

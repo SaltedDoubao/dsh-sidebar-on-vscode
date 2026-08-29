@@ -30,6 +30,10 @@ The generated local VSIX is identified as `local.dsh-sidebar-on-vscode`. The ini
 
 Click the settings button at the top-right of the sidebar or run `DSH Sidebar on VSCode: Open Settings` to open a standalone settings tab in the editor area. Re-opening it will reuse the existing tab and refresh authoritative Host data. The page provides general settings, model providers, plugins, and agent presets; extension-level advanced options (such as Host startup parameters) remain located in VS Code's native Settings.
 
+### Ephemeral IDE Context (Experimental)
+
+Enabling "Ephemeral IDE context (Experimental)" in the settings panel (configuration key `deepseekHarness.ideContext.ephemeral.enabled`) activates the local IDE Bridge service. When paired with the DSH IDE Context Runtime plugin, editor selection, cursor position, and workspace context are injected per-turn at the extension host boundary without polluting composer text, and gracefully falls back to compatible behavior when unavailable.
+
 ### Custom Host Startup Command
 
 The Host is started on demand when the sidebar is first opened. The extension first tries to reuse a compatible loopback Host; if none is found, it attempts the configured executable and then `dsh` on PATH in order. If neither is available, it displays an installation prompt without auto-downloading. The executable and arguments must be configured separately, for example:

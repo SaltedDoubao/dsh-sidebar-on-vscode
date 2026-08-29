@@ -30,6 +30,10 @@ npm run package
 
 点击侧边栏右上角的设置按钮，或运行 `DSH Sidebar on VSCode: Open Settings`，会在当前编辑器区域打开独立的设置标签。重复打开会复用同一标签并刷新 Host 权威数据。页面提供通用设置、模型提供方、插件和 Agent 预设；Host 启动参数等扩展级高级选项仍位于 VS Code 原生 Settings。
 
+### 瞬时 IDE 上下文（实验性）
+
+在设置面板中开启「瞬时 IDE 上下文（实验性）」（配置项 `deepseekHarness.ideContext.ephemeral.enabled`），可启用本地 IDE Bridge 服务。当配合 DSH IDE Context Runtime 插件使用时，将以每轮替换的方式在扩展宿主层自动注入当前编辑器选区、光标位置及工作区上下文，无需污染输入框文本，并在不可用时平滑静默回退。
+
 ### 自定义 Host 启动命令
 
 Host 在首次打开侧边栏时按需启动。扩展先复用兼容的 loopback Host；未找到时依次尝试配置的可执行文件和 PATH 中的 `dsh`。两者都不可用时只显示安装提示，不会自动下载。可执行文件与参数必须分开配置，例如：
