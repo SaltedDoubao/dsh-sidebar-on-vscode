@@ -8,6 +8,7 @@
 
 import type { JSX } from 'react'
 import type { Attachment } from '../../types'
+import { useI18n } from '../../use-i18n'
 
 export interface AttachmentRailProps {
   items: Attachment[]
@@ -15,20 +16,21 @@ export interface AttachmentRailProps {
 }
 
 export function AttachmentRail({ items, onRemove }: AttachmentRailProps): JSX.Element | null {
+  const { t } = useI18n()
   if (items.length === 0) return null
   return (
-    <ul className="attachment-rail" aria-label="附件列表">
+    <ul className="attachment-rail" aria-label={t('Attachment list')}>
       {items.map((item) => (
         <li key={item.id} className="attachment-thumb">
           {item.previewUrl !== undefined ? (
-            <img src={item.previewUrl} alt={item.name ?? '图片附件'} />
+            <img src={item.previewUrl} alt={item.name ?? t('Image attachment')} />
           ) : (
-            <span className="attachment-fallback">{item.name ?? '图片'}</span>
+            <span className="attachment-fallback">{item.name ?? t('Image')}</span>
           )}
           <button
             type="button"
             className="attachment-remove"
-            aria-label={`移除附件 ${item.name ?? ''}`}
+            aria-label={t('Remove attachment {name}', { name: item.name ?? '' })}
             onClick={() => onRemove(item.id)}
           >
             ✕

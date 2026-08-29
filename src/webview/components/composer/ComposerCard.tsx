@@ -19,6 +19,8 @@ import { onIdeContent, onIdeContextMeta, requestIdeContextMeta } from '../../bri
 import { formatIdeInsert } from '../../ide-insert'
 import { useAppStore } from '../../store'
 import type { Attachment } from '../../types'
+import { translate, type Locale } from '../../i18n'
+import { useI18n } from '../../use-i18n'
 import { OverlayHost } from '../overlay/OverlayHost'
 import { AttachmentRail } from './AttachmentRail'
 import { ComposerInput } from './ComposerInput'
@@ -26,6 +28,7 @@ import { ContextMeter } from './ContextMeter'
 import { GoalBar } from './GoalBar'
 import { ModelSelect } from './ModelSelect'
 import { PermissionSelect } from './PermissionSelect'
+import { defaultPermissionProjection } from './permission-select-model'
 import { QueueDock } from './QueueDock'
 import { SendStopButton } from './SendStopButton'
 import { StatsLine } from './StatsLine'
@@ -52,25 +55,25 @@ export interface IntakeFile {
  * (added to the current attachments) violates a limit, null when accepted.
  * Format precedes limits, so a batch with a non-image announces that first.
  */
-export function validateImageBatch(files: readonly IntakeFile[], currentCount: number): string | null {
+export function validateImageBatch(files: readonly IntakeFile[], currentCount: number, locale: Locale = 'zh'): string | null {
   if (files.length === 0) return null
   if (files.some((f) => !(IMAGE_LIMITS.mediaTypes as readonly string[]).includes(f.type))) {
-    return '仅支持 png / jpeg / webp / gif 图片'
+    return translate(locale, 'Only png / jpeg / webp / gif images are supported')
   }
   if (currentCount + files.length > IMAGE_LIMITS.maxCount) {
-    return `每条消息最多 ${IMAGE_LIMITS.maxCount} 张图片`
+    return translate(locale, 'Each message can contain up to {count} images', { count: IMAGE_LIMITS.maxCount })
   }
   if (files.some((f) => f.size > IMAGE_LIMITS.maxBytes)) {
-    return `单张图片不能超过 ${Math.round(IMAGE_LIMITS.maxBytes / 1024 / 1024)}MB`
+    return translate(locale, 'Each image must be no larger than {size}MB', { size: Math.round(IMAGE_LIMITS.maxBytes / 1024 / 1024) })
   }
   return null
 }
 
 /** Read one image File into a composer Attachment (base64 data + preview URL). */
-function fileToAttachment(file: File): Promise<Attachment> {
+function fileToAttachment(file: File, readError: string): Promise<Attachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error(`读取文件失败: ${file.name}`))
+    reader.onerror = () => reject(new Error(readError))
     reader.onload = () => {
       const result = String(reader.result)
       resolve({
@@ -86,6 +89,7 @@ function fileToAttachment(file: File): Promise<Attachment> {
 }
 
 export function ComposerCard(): JSX.Element {
+  const { locale, t } = useI18n()
   const activeSessionId = useAppStore((s) => s.activeSessionId)
   const turnStatus = useAppStore((s) => s.turnStatus)
   // The host's per-session running flag: survives history reloads, unlike the
@@ -98,6 +102,7 @@ export function ComposerCard(): JSX.Element {
   const models = useAppStore((s) => s.models)
   const selectedModel = useAppStore((s) => s.selectedModel)
   const permissions = useAppStore((s) => s.permissions)
+  const defaultPermissionMode = useAppStore((s) => s.uiPrefs.permissionMode)
   const permissionSwitchingTo = useAppStore((s) => s.permissionSwitchingTo)
   const permissionError = useAppStore((s) => s.permissionError)
   const language = useAppStore((s) => s.uiPrefs.language)
@@ -127,6 +132,11 @@ export function ComposerCard(): JSX.Element {
   const dragDepthRef = useRef(0)
 
   const running = turnStatus === 'running' || sessionRunning
+  const futureSessionPermission = activeSessionId === null
+  const displayedPermissions = permissions ?? defaultPermissionProjection(defaultPermissionMode)
+  // Keep the control visible while a selected session's projection is loading,
+  // but do not let that transient fallback mutate the new-session default.
+  const permissionLocked = running || (!futureSessionPermission && permissions === null)
   // Sending without a session auto-creates one (sendPrompt handles it), so the
   // input is always usable once the host is up.
   const canSend = draft.trim() !== '' || attachments.length > 0
@@ -179,15 +189,15 @@ export function ComposerCard(): JSX.Element {
   /** Intake from any source (picker / drop / paste): pre-check the batch, then read files. */
   const intakeFiles = useCallback((files: readonly File[]): void => {
     if (files.length === 0) return
-    const rejected = validateImageBatch(files, attachments.length)
+    const rejected = validateImageBatch(files, attachments.length, locale)
     if (rejected !== null) {
       showToast(rejected)
       return
     }
-    void Promise.all(files.map(fileToAttachment))
+    void Promise.all(files.map((file) => fileToAttachment(file, t('Failed to read file: {name}', { name: file.name }))))
       .then((added) => setAttachments((cur) => [...cur, ...added]))
       .catch((err: unknown) => showToast(err instanceof Error ? err.message : String(err)))
-  }, [attachments.length, showToast])
+  }, [attachments.length, locale, showToast, t])
 
   // Document-level drag & drop (dsh web behavior): a file drop anywhere over
   // the panel targets the composer; text drags pass through untouched.
@@ -294,7 +304,7 @@ export function ComposerCard(): JSX.Element {
       />
       <SubagentDock />
       <TodoPanel todos={todos} />
-      <GoalBar goal={goal} onEdit={editGoal} onPause={pauseGoal} onResume={resumeGoal} onClear={clearGoal} />
+      <GoalBar goal={goal} onEdit={editGoal} onPause={pauseGoal} onResume={resumeGoal} onClear={clearGoal} locale={locale} />
       <div className={`composer-card${dragActive ? ' drag-active' : ''}`} data-composer-card>
         <OverlayHost />
         {!overlayActive && (
@@ -305,12 +315,12 @@ export function ComposerCard(): JSX.Element {
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M3 1.5h6l4 4v9H3zM9 1.5v4h4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
                   <span>{ideContext.fileName}</span>
                   {ideContext.startLine !== undefined && <small>{ideContext.startLine === ideContext.endLine ? `#L${ideContext.startLine}` : `#L${ideContext.startLine}-L${ideContext.endLine}`}</small>}
-                  <button type="button" aria-label="关闭 IDE 上下文注入" title="关闭 IDE 上下文注入" onClick={() => setIdeContextEnabled(false)}>×</button>
+                  <button type="button" aria-label={t('Disable IDE context injection')} title={t('Disable IDE context injection')} onClick={() => setIdeContextEnabled(false)}>×</button>
                 </div>
               ) : (
-                <button type="button" className="composer-context-add" aria-label="开启 IDE 上下文注入" onClick={() => { setIdeContextEnabled(true); requestIdeContextMeta() }}>
+                <button type="button" className="composer-context-add" aria-label={t('Enable IDE context injection')} onClick={() => { setIdeContextEnabled(true); requestIdeContextMeta() }}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M3 1.5h6l4 4v9H3zM9 1.5v4h4M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  添加上下文
+                  {t('Add context')}
                 </button>
               )}
             </div>
@@ -331,8 +341,8 @@ export function ComposerCard(): JSX.Element {
                   type="button"
                   className="composer-chip composer-add"
                   data-composer-tool="attach"
-                  aria-label="添加图片附件"
-                  title="添加图片附件"
+                  aria-label={t('Add image attachment')}
+                  title={t('Add image attachment')}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
@@ -350,20 +360,28 @@ export function ComposerCard(): JSX.Element {
                     e.target.value = '' // re-picking the same file must re-fire change
                   }}
                 />
-                <PermissionSelect value={permissions} switchingTo={permissionSwitchingTo} error={permissionError} zh={language === 'zh'} locked={running} onChange={setPermissionPreset} />
+                <PermissionSelect
+                  value={displayedPermissions}
+                  switchingTo={permissionSwitchingTo}
+                  error={permissionError}
+                  zh={language === 'zh'}
+                  locked={permissionLocked}
+                  futureSession={futureSessionPermission}
+                  onChange={setPermissionPreset}
+                />
               </div>
-              <div className="composer-trailing">
+              <div className="composer-trailing-extras">
                 <ModelSelect models={models} selected={selectedModel} onSelect={selectModel} />
                 <ContextMeter />
-                <SendStopButton running={running} canSend={canSend} onSend={send} onStop={() => void cancel()} />
               </div>
+              <SendStopButton running={running} canSend={canSend} onSend={send} onStop={() => void cancel()} />
             </div>
           </>
         )}
         {toast !== null && (
           <div key={toast.seq} className="composer-toast" role="status">{toast.text}</div>
         )}
-        {dragActive && <div className="composer-drop-overlay">松开以添加图片</div>}
+        {dragActive && <div className="composer-drop-overlay">{t('Drop to add images')}</div>}
       </div>
       <StatsLine />
     </section>

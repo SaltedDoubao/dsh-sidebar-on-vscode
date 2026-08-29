@@ -10,10 +10,12 @@ import { useState, type JSX } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { openExternal, openFile } from '../../bridge'
+import { useI18n } from '../../use-i18n'
 
 /** Pre/code renderer that adds a hover copy button to fenced blocks. */
 function CodeBlock(props: { className?: string; children?: React.ReactNode }): JSX.Element {
   const [copied, setCopied] = useState(false)
+  const { t } = useI18n()
   const text = String(props.children ?? '').replace(/\n$/, '')
   const lang = /language-(\w+)/.exec(props.className ?? '')?.[1]
 
@@ -29,7 +31,7 @@ function CodeBlock(props: { className?: string; children?: React.ReactNode }): J
       <div className="md-codeblock-header">
         <span>{lang ?? 'text'}</span>
         <button type="button" className="md-copy-btn" onClick={copy}>
-          {copied ? '已复制' : '复制'}
+          {copied ? t('Copied') : t('Copy')}
         </button>
       </div>
       <pre>

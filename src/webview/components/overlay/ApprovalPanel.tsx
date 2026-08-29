@@ -15,6 +15,7 @@
 
 import { useState, type JSX } from 'react'
 import type { ApprovalRequest } from '../../types'
+import { useI18n } from '../../use-i18n'
 
 /** ApprovalPanel props: the pending request plus the store's resolve action. */
 export interface ApprovalPanelProps {
@@ -28,6 +29,7 @@ export interface ApprovalPanelProps {
 export function ApprovalPanel({ request, command, onResolve }: ApprovalPanelProps): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
 
   const decide = (decision: 'allow-once' | 'refuse'): void => {
     setBusy(true)
@@ -40,11 +42,11 @@ export function ApprovalPanel({ request, command, onResolve }: ApprovalPanelProp
 
   return (
     <div className="ovl-card" data-approval-id={request.approvalId}>
-      <div className="ovl-strip"><span className="ovl-strip-dot" />Waiting for approval</div>
+      <div className="ovl-strip"><span className="ovl-strip-dot" />{t('Waiting for approval')}</div>
       {/* Tab stop: the region scrolls once the command passes the cap and holds
           nothing focusable of its own. */}
-      <div className="ovl-body" data-approval-scroll tabIndex={0} role="group" aria-label="审批详情">
-        <div className="ovl-headline">{request.reason ?? `工具 ${request.toolName} 请求越权执行`}</div>
+      <div className="ovl-body" data-approval-scroll tabIndex={0} role="group" aria-label={t('Approval details')}>
+        <div className="ovl-headline">{request.reason ?? t('Tool {tool} requests elevated execution', { tool: request.toolName })}</div>
         {command !== undefined && <div className="ovl-command">{command}</div>}
       </div>
       <div className="ovl-footer">
@@ -54,13 +56,13 @@ export function ApprovalPanel({ request, command, onResolve }: ApprovalPanelProp
             type="button" className="ovl-btn ovl-btn-outline"
             disabled={busy} onClick={() => { decide('refuse') }}
           >
-            Refuse
+            {t('Refuse')}
           </button>
           <button
             type="button" className="ovl-btn ovl-btn-primary"
             disabled={busy} onClick={() => { decide('allow-once') }}
           >
-            Allow once
+            {t('Allow once')}
           </button>
         </div>
       </div>

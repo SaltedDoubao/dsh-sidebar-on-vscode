@@ -12,6 +12,8 @@ import type { SessionId } from '../../../extension/protocol/brand'
 import { useAppStore } from '../../store'
 import { openFile } from '../../bridge'
 import type { CompactionNode, ContextInjectionNode, ConversationNode, ErrorNode, RetryNode, WorkflowRunNode } from '../../types'
+import type { ConversationMode } from '../../types'
+import { useI18n } from '../../use-i18n'
 import { AssistantBubble, MessageBubble } from './MessageBubble'
 import { ReasoningRow } from './ReasoningRow'
 import { ToolCallRow } from './ToolCallRow'
@@ -21,6 +23,7 @@ import './conversation.css'
 export interface ConversationViewProps {
   /** Active session; the view re-mounts when it changes. */
   sessionId: SessionId
+  mode: ConversationMode
 }
 
 /** Reader is pinned to the floor while within this many px of it. */
@@ -29,12 +32,13 @@ const FOLLOW_THRESHOLD = 24
 /** Collapsed context-injection row (AGENTS.md and friends); click expands. */
 function ContextInjectionRow(props: { node: ContextInjectionNode }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const { t } = useI18n()
   const label = props.node.form !== undefined ? `${props.node.plugin} · ${props.node.form}` : props.node.plugin
   return (
     <div className="ctx-row">
       <button type="button" className="ctx-row-head" onClick={() => setOpen((v) => !v)}>
         <span aria-hidden>📎</span>
-        <span className="ctx-row-label">Context injection</span>
+        <span className="ctx-row-label">{t('Context injection')}</span>
         <span className="tool-row-dot">·</span>
         <span className="tool-row-summary">{label}</span>
         <span className={`tool-row-chevron${open ? ' tool-row-chevron-open' : ''}`}>›</span>
@@ -46,19 +50,20 @@ function ContextInjectionRow(props: { node: ContextInjectionNode }): JSX.Element
 
 /** Compaction marker line ("已压缩 N 条历史" style). */
 function CompactionRow(props: { node: CompactionNode }): JSX.Element {
+  const { t } = useI18n()
   return (
     <div className="marker-row marker-compaction">
-      <span aria-hidden>🗜</span> 已压缩历史{props.node.summary !== undefined ? `：${props.node.summary}` : ''}
+      <span aria-hidden>🗜</span> {t('Compacted history{summary}', { summary: props.node.summary !== undefined ? `：${props.node.summary}` : '' })}
     </div>
   )
 }
 
 /** Automatic model-retry marker line. */
 function RetryRow(props: { node: RetryNode }): JSX.Element {
+  const { t } = useI18n()
   return (
     <div className="marker-row marker-retry">
-      <span aria-hidden>↻</span> {`重试 ${props.node.attempt}`}
-      {props.node.message !== undefined ? `，${props.node.message}` : ''}
+      <span aria-hidden>↻</span> {t('Retry {attempt}{message}', { attempt: props.node.attempt, message: props.node.message !== undefined ? `，${props.node.message}` : '' })}
     </div>
   )
 }
@@ -75,6 +80,7 @@ function ErrorRow(props: { node: ErrorNode }): JSX.Element {
 
 function WorkflowRunCard({ node }: { node: WorkflowRunNode }): JSX.Element {
   const [open, setOpen] = useState(true)
+  const { t } = useI18n()
   return (
     <article className="workflow-run-card" data-workflow-run={node.runId}>
       <button type="button" className="workflow-run-head" onClick={() => setOpen((value) => !value)}>
@@ -88,12 +94,12 @@ function WorkflowRunCard({ node }: { node: WorkflowRunNode }): JSX.Element {
           {node.members.map((member) => (
             <li key={member.seq}>
               <span className={`workflow-status workflow-status-${member.status}`} aria-hidden />
-              <span>{member.label || `Agent ${member.seq}`}</span>
+              <span>{member.label || t('Agent {seq}', { seq: member.seq })}</span>
               {member.phase !== undefined && <span className="settings-tag">{member.phase}</span>}
               <span className="tool-row-summary">{member.status}</span>
             </li>
           ))}
-          {node.members.length === 0 && <li className="tool-row-summary">等待工作流节点…</li>}
+          {node.members.length === 0 && <li className="tool-row-summary">{t('Waiting for workflow nodes…')}</li>}
         </ol>
       )}
     </article>
@@ -139,15 +145,14 @@ function TurnStatsRow(): JSX.Element | null {
   return <div className="turn-stats-row">{parts.join(' · ')}</div>
 }
 
-export function ConversationView({ sessionId }: ConversationViewProps): JSX.Element {
+export function ConversationView({ sessionId, mode }: ConversationViewProps): JSX.Element {
   const nodes = useAppStore((s) => s.nodes)
   const turnStatus = useAppStore((s) => s.turnStatus)
   const turnStartedAt = useAppStore((s) => s.turnStartedAt)
   const hasMoreHistory = useAppStore((s) => s.hasMoreHistory)
   const loadingOlder = useAppStore((s) => s.loadingOlder)
   const loadOlderHistory = useAppStore((s) => s.loadOlderHistory)
-  const trajectoryAvailable = useAppStore((s) => s.capabilities?.trajectory === true)
-  const [mode, setMode] = useState<'chat' | 'trajectory'>('chat')
+  const { locale, t } = useI18n()
   const deliverables = [...new Set(nodes.flatMap((node) => {
     if (node.kind !== 'tool-call' || node.status !== 'done') return []
     const view = node.resultView?.card === 'diff' ? node.resultView : node.callView?.card === 'diff' ? node.callView : undefined
@@ -205,16 +210,10 @@ export function ConversationView({ sessionId }: ConversationViewProps): JSX.Elem
       data-session={sessionId}
       onScroll={onScroll}
     >
-      {trajectoryAvailable && (
-        <div className="conversation-mode-tabs" role="tablist" aria-label="Conversation view">
-          <button type="button" role="tab" aria-selected={mode === 'chat'} onClick={() => setMode('chat')}>对话</button>
-          <button type="button" role="tab" aria-selected={mode === 'trajectory'} onClick={() => setMode('trajectory')}>Trajectory</button>
-        </div>
-      )}
       {hasMoreHistory && (
         <div className="conv-older">
           <button type="button" className="conv-older-btn" disabled={loadingOlder} onClick={loadOlder}>
-            {loadingOlder ? '加载中…' : 'Load older'}
+            {loadingOlder ? t('Loading…') : t('Load older')}
           </button>
         </div>
       )}
@@ -222,12 +221,12 @@ export function ConversationView({ sessionId }: ConversationViewProps): JSX.Elem
         <ol className="trajectory-list">
           {nodes.map((node) => (
             <li key={node.id}>
-              <time>{new Date(node.time).toLocaleTimeString()}</time>
+              <time>{new Date(node.time).toLocaleTimeString(locale === 'zh' ? 'zh-CN' : 'en')}</time>
               <span className="trajectory-kind">{node.kind}</span>
               <span className="trajectory-summary">
                 {node.kind === 'tool-call' ? `${node.name} · ${node.status}`
                   : node.kind === 'assistant-text' ? node.text.slice(0, 100)
-                    : node.kind === 'user-message' ? 'User prompt'
+                    : node.kind === 'user-message' ? t('User prompt')
                       : node.kind === 'workflow-run' ? `${node.name} · ${node.status}`
                         : ''}
               </span>
@@ -235,7 +234,7 @@ export function ConversationView({ sessionId }: ConversationViewProps): JSX.Elem
           ))}
         </ol>
       ) : nodes.length === 0 ? (
-        <div className="empty-hero">输入消息，开始对话</div>
+        <div className="empty-hero">{t('Type a message to start chatting')}</div>
       ) : (
         <div className="conv-flow">
           {nodes.map((n) => (
@@ -247,16 +246,16 @@ export function ConversationView({ sessionId }: ConversationViewProps): JSX.Elem
       )}
       {turnStatus === 'running' && turnStartedAt !== null && <TurnStatusLine startedAt={turnStartedAt} />}
       {deliverables.length > 0 && (
-        <div className="deliverables-row" aria-label="交付物">
-          <strong>交付物</strong>
+        <div className="deliverables-row" aria-label={t('Deliverables')}>
+          <strong>{t('Deliverables')}</strong>
           {deliverables.map((file) => <button key={file} type="button" onClick={() => openFile(file)}>{file}</button>)}
         </div>
       )}
       <TurnStatsRow />
       {!atBottom && (
         <div className="conv-tobottom-slot">
-          <button type="button" className="conv-tobottom" aria-label="回到底部" onClick={toBottom}>
-            ↓ 回到底部
+          <button type="button" className="conv-tobottom" aria-label={t('Back to bottom')} onClick={toBottom}>
+            ↓ {t('Back to bottom')}
           </button>
         </div>
       )}

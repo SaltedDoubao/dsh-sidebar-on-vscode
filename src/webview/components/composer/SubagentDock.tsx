@@ -13,6 +13,7 @@ import type { SessionId } from '../../../extension/protocol/brand'
 import type { SubagentListEntry } from '../../../extension/protocol/subagents'
 import { useAppStore } from '../../store'
 import { formatDuration } from './StatsLine'
+import { useI18n } from '../../use-i18n'
 
 /** Narrow a catalog row to a healthy child entry. */
 type ChildEntry = Extract<SubagentListEntry, { kind: 'child' }>
@@ -26,6 +27,7 @@ export function SubagentDock(): JSX.Element | null {
   const stopSubagent = useAppStore((s) => s.stopSubagent)
   const [stopping, setStopping] = useState<ReadonlySet<SessionId>>(new Set())
   const [now, setNow] = useState(() => Date.now())
+  const { t } = useI18n()
 
   const rows = subagents.filter(isChild)
   const liveJobs = jobs.filter((j) => j.status === 'running' || j.status === 'stopping')
@@ -66,7 +68,7 @@ export function SubagentDock(): JSX.Element | null {
               />
               <span className="subagent-label" title={label}>{label}</span>
               <span className="subagent-status">
-                {isStopping ? '停止中' : running ? '运行中' : '已结束'}
+                {isStopping ? t('Stopping') : running ? t('Running') : t('Ended')}
               </span>
               {row.mode === 'continuable' && running && (
                 <button
@@ -75,7 +77,7 @@ export function SubagentDock(): JSX.Element | null {
                   disabled={isStopping}
                   onClick={() => stop(row.id)}
                 >
-                  停止
+                  {t('Stop')}
                 </button>
               )}
             </li>
@@ -85,12 +87,12 @@ export function SubagentDock(): JSX.Element | null {
           <li
             key={job.id}
             className="subagent-row"
-            title="后台任务由模型侧 job_kill 控制，协议暂不支持手动停止"
+            title={t('Background jobs are controlled by model-side job_kill; the protocol does not support manual stopping yet')}
           >
             <span className={`subagent-dot ${job.status === 'stopping' ? 'stopping' : 'running'}`} aria-hidden />
             <span className="subagent-label">{job.label}</span>
             <span className="subagent-status">
-              {job.status === 'stopping' ? '停止中' : formatDuration(Math.max(0, now - job.startedAt))}
+              {job.status === 'stopping' ? t('Stopping') : formatDuration(Math.max(0, now - job.startedAt))}
             </span>
           </li>
         ))}

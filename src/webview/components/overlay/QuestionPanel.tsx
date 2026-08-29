@@ -18,6 +18,7 @@
 import { useState, type ChangeEvent, type JSX, type KeyboardEvent } from 'react'
 import type { AskUserQuestionAnswerItem } from '../../../extension/protocol/events'
 import type { QuestionRequest } from '../../types'
+import { useI18n } from '../../use-i18n'
 
 /** QuestionPanel props: the pending batch plus the store's answer action. */
 export interface QuestionPanelProps {
@@ -57,12 +58,13 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
   })))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
 
   // index stays in bounds (every setIndex site clamps) and drafts mirrors questions 1:1.
   const question = questions[Math.min(index, questions.length - 1)]
   const draft = drafts[Math.min(index, questions.length - 1)]
   if (question === undefined || draft === undefined) {
-    return <div className="ovl-card ovl-feedback">空的问题批次</div>
+    return <div className="ovl-card ovl-feedback">{t('Empty question batch')}</div>
   }
   const hasOptions = (question.options?.length ?? 0) > 0
   const isLast = index >= questions.length - 1
@@ -106,7 +108,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
     const missing = values.findIndex((item) => !completed(item))
     if (missing >= 0) {
       setIndex(missing)
-      setError('请先完成这道问题。')
+      setError(t('Please complete this question first.'))
       return
     }
     const answers: AskUserQuestionAnswerItem[] = questions.map((item, i) => {
@@ -127,7 +129,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
   /** Continue: advance to the next question, or submit on the last one. */
   const continueFlow = (): void => {
     if (!answered(draft)) {
-      setError('请选择一个选项或填写自定义答案。')
+      setError(t('Select an option or enter a custom answer.'))
       return
     }
     if (!isLast) {
@@ -180,7 +182,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
           type="button" className="ovl-btn ovl-btn-ghost ovl-close-all"
           disabled={busy} onClick={closeAll}
         >
-          关闭全部
+          {t('Close all')}
         </button>
       </header>
 
@@ -209,7 +211,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
                 <span className="ovl-option-copy">
                   <span className="ovl-option-line">
                     <span className="ovl-option-label">{display.label}</span>
-                    {display.recommended && <span className="ovl-badge">推荐</span>}
+                    {display.recommended && <span className="ovl-badge">{t('Recommended')}</span>}
                   </span>
                   {option.description !== undefined && (
                     <span className="ovl-option-desc">{option.description}</span>
@@ -227,7 +229,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
                   className="ovl-custom-input"
                   value={draft.custom}
                   disabled={busy}
-                  placeholder="Type your answer"
+                  placeholder={t('Type your answer')}
                   onChange={draftCustom}
                   onKeyDown={continueFromCustom}
                 />
@@ -239,7 +241,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
                 value={draft.custom}
                 disabled={busy}
                 rows={4}
-                placeholder="Type your answer"
+                placeholder={t('Type your answer')}
                 onChange={draftCustom}
                 onKeyDown={continueFromCustom}
               />
@@ -250,7 +252,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
       <footer className="ovl-footer">
         <div className="ovl-pager">
           <button
-            type="button" className="ovl-btn ovl-btn-ghost" aria-label="上一题" title="上一题"
+            type="button" className="ovl-btn ovl-btn-ghost" aria-label={t('Previous question')} title={t('Previous question')}
             disabled={index === 0 || busy}
             onClick={() => { setIndex(index - 1); setError(null) }}
           >
@@ -258,7 +260,7 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
           </button>
           <span className="ovl-progress">{index + 1} / {questions.length}</span>
           <button
-            type="button" className="ovl-btn ovl-btn-ghost" aria-label="下一题" title="下一题"
+            type="button" className="ovl-btn ovl-btn-ghost" aria-label={t('Next question')} title={t('Next question')}
             disabled={isLast || busy}
             onClick={() => { setIndex(index + 1); setError(null) }}
           >
@@ -268,13 +270,13 @@ export function QuestionPanel({ request, onAnswer }: QuestionPanelProps): JSX.El
         <div className="ovl-feedback" role="status">{error}</div>
         <div className="ovl-actions">
           <button type="button" className="ovl-btn ovl-btn-outline" disabled={busy} onClick={skipQuestion}>
-            Skip this question
+            {t('Skip this question')}
           </button>
           <button
             type="button" className="ovl-btn ovl-btn-primary"
             disabled={busy || !answered(draft)} onClick={continueFlow}
           >
-            {isLast ? 'Submit' : '下一题'}
+            {isLast ? t('Submit') : t('Next question')}
           </button>
         </div>
       </footer>

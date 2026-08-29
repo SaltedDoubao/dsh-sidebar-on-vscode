@@ -17,6 +17,7 @@ import type {
 } from '../../../extension/protocol/tool-views'
 import type { ToolCallNode } from '../../types'
 import { openExternal, openFile } from '../../bridge'
+import { useI18n } from '../../use-i18n'
 
 // ---------------------------------------------------------------------------
 // Lightweight line diff (LCS-based; no dependencies)
@@ -119,6 +120,7 @@ function IoSection(props: { label: 'IN' | 'OUT'; text: string; error?: boolean }
 
 /** Terminal card: cwd + command header, monospaced capped output, exit status. */
 function TerminalCard(props: { node: ToolCallNode; view: Extract<ToolCallView | ToolResultView, { card: 'terminal' }> }): JSX.Element {
+  const { t } = useI18n()
   const { view, node } = props
   // The call view carries cwd/description; the result view carries output/exit.
   const callView = node.callView?.card === 'terminal' ? node.callView : undefined
@@ -139,7 +141,7 @@ function TerminalCard(props: { node: ToolCallNode; view: Extract<ToolCallView | 
       </div>
       {body !== null && <pre className="tool-terminal-out">{body}</pre>}
       {node.status === 'pending' ? (
-        <div className="tool-terminal-status">运行中…</div>
+        <div className="tool-terminal-status">{t('Running…')}</div>
       ) : (
         <div className={`tool-terminal-status${failed || signal !== undefined ? ' tool-status-error' : ''}`}>
           {signal !== undefined ? `signal ${signal}` : `exit code ${exitCode ?? 0}`}
@@ -151,13 +153,14 @@ function TerminalCard(props: { node: ToolCallNode; view: Extract<ToolCallView | 
 
 /** Diff card: one line-level diff per file; oldText null renders as new file. */
 function DiffCard(props: { view: Extract<ToolCallView | ToolResultView, { card: 'diff' }> }): JSX.Element {
+  const { t } = useI18n()
   return (
     <div className="tool-card tool-card-diff">
       {props.view.diffs.map((d: FileDiff) => (
         <div key={d.path} className="tool-diff-file">
           <div className="tool-diff-path">
             <button type="button" className="tool-path-link" onClick={() => openFile(d.path)}>{d.path}</button>
-            {d.oldText === null && <span className="tool-diff-badge">新文件</span>}
+            {d.oldText === null && <span className="tool-diff-badge">{t('New file')}</span>}
           </div>
           <pre className="tool-diff-body">
             {diffLines(d.oldText, d.newText).map((row, i) => (
@@ -178,11 +181,12 @@ function DiffCard(props: { view: Extract<ToolCallView | ToolResultView, { card: 
 /** Read card: line-numbered window of the read file. */
 function ReadCard(props: { view: Extract<ToolResultView, { card: 'read' }> }): JSX.Element {
   const { view } = props
+  const { t } = useI18n()
   return (
     <div className="tool-card tool-card-read">
       <div className="tool-read-path">
         {view.path}
-        <span className="tool-read-range">{`${view.offset}–${view.offset + view.lines.length - 1} / ${view.totalLines} 行`}</span>
+        <span className="tool-read-range">{t('{start}–{end} / {total} lines', { start: view.offset, end: view.offset + view.lines.length - 1, total: view.totalLines })}</span>
       </div>
       <pre className="tool-read-body">
         {view.lines.map((line) => (
@@ -199,6 +203,7 @@ function ReadCard(props: { view: Extract<ToolResultView, { card: 'read' }> }): J
 /** Search card: matches grouped by file, or a flat path list (glob). */
 function SearchCard(props: { view: SearchResultView }): JSX.Element {
   const { view } = props
+  const { t } = useI18n()
   return (
     <div className="tool-card tool-card-search">
       {view.shape === 'matches'
@@ -221,7 +226,7 @@ function SearchCard(props: { view: SearchResultView }): JSX.Element {
           </ul>
         )}
       <div className="tool-search-foot">
-        共 {view.total} 条{view.truncated ? '（已截断）' : ''}
+        {t('{count} total{truncated}', { count: view.total, truncated: view.truncated ? t(' (truncated)') : '' })}
       </div>
     </div>
   )
@@ -230,13 +235,14 @@ function SearchCard(props: { view: SearchResultView }): JSX.Element {
 /** Web card: search = answer + source list; fetch = URL + status code. */
 function WebCard(props: { view: WebResultView }): JSX.Element {
   const { view } = props
+  const { t } = useI18n()
   if (view.kind === 'fetch') {
     return (
       <div className="tool-card tool-card-web">
         <div className="tool-web-fetch">
           <a href={view.url} onClick={(event) => { event.preventDefault(); openExternal(view.url) }}>{view.url}</a>
           <span className="tool-web-status">{`HTTP ${view.statusCode}`}</span>
-          {view.truncated && <span className="tool-web-status">（内容已截断）</span>}
+          {view.truncated && <span className="tool-web-status">{t('Content truncated')}</span>}
         </div>
       </div>
     )
@@ -252,13 +258,14 @@ function WebCard(props: { view: WebResultView }): JSX.Element {
           </li>
         ))}
       </ul>
-      {view.truncated && <div className="tool-search-foot">来源列表已截断</div>}
+      {view.truncated && <div className="tool-search-foot">{t('Source list truncated')}</div>}
     </div>
   )
 }
 
 /** Generic fallback card: IN (raw input / arguments) + OUT (result text). */
 function GenericCard(props: { node: ToolCallNode; view: Extract<ToolCallView | ToolResultView, { card: 'generic' }> | null }): JSX.Element {
+  const { t } = useI18n()
   const view = props.view
   const raw = view !== null && 'rawInput' in view ? view.rawInput : undefined
   const input =
@@ -275,7 +282,7 @@ function GenericCard(props: { node: ToolCallNode; view: Extract<ToolCallView | T
       {output !== null && (
         <IoSection label="OUT" text={output} error={props.node.status === 'error'} />
       )}
-      {input === '' && output === null && <div className="tool-card-empty">（无详情）</div>}
+      {input === '' && output === null && <div className="tool-card-empty">{t('(no details)')}</div>}
     </div>
   )
 }

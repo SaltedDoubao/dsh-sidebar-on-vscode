@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import type { ModelSelection } from '../../../extension/protocol/sessions'
 import type { ModelInfo } from '../../types'
+import { useI18n } from '../../use-i18n'
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
 type Pane = 'root' | 'model' | 'effort'
@@ -32,6 +33,7 @@ interface EffortChoice {
 }
 
 export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): JSX.Element {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
   const [busy, setBusy] = useState(false)
@@ -47,14 +49,14 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
   const effortLabel = reasoning === undefined
     ? undefined
     : effectiveEffort === undefined
-      ? 'Provider default'
+      ? t('Provider default')
       : reasoning.efforts.find((e) => e.id === effectiveEffort)?.name ?? effectiveEffort
 
   const effortChoices = useMemo<readonly EffortChoice[]>(() => {
     if (reasoning === undefined) return []
     return [
       ...(reasoning.defaultEffort === undefined
-        ? [{ key: 'provider-default', effort: undefined, label: 'Provider default' }]
+        ? [{ key: 'provider-default', effort: undefined, label: t('Provider default') }]
         : []),
       ...reasoning.efforts.map((e) => ({
         key: `effort:${e.id}`,
@@ -63,7 +65,7 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
         ...(e.description === undefined ? {} : { description: e.description }),
       })),
     ]
-  }, [reasoning])
+  }, [reasoning, t])
 
   /** Provider-grouped view of the flat model list, first-seen order. */
   const groups = useMemo(() => {
@@ -131,7 +133,7 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
     submit(selected.provider, selected.model, effort)
   }
 
-  const modelLabel = current?.name ?? '选择模型'
+  const modelLabel = current?.name ?? t('Select model')
   const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
 
   return (
@@ -139,7 +141,7 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
       <button
         type="button"
         className="composer-chip"
-        aria-label={`选择模型，当前 ${triggerLabel}`}
+        aria-label={t('Select model, current {model}', { model: triggerLabel })}
         aria-haspopup="menu"
         aria-expanded={open}
         title={triggerLabel}
@@ -156,18 +158,18 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
         {effortLabel !== undefined && <span className="composer-chip-effort">{effortLabel}</span>}
       </button>
       {open && (
-        <div className="composer-menu model-menu" role="menu" aria-label="模型选择" aria-busy={busy}>
+        <div className="composer-menu model-menu" role="menu" aria-label={t('Model selection')} aria-busy={busy}>
           {error !== null && <div className="composer-menu-error">{error}</div>}
           {pane === 'root' && (
             <>
               <button type="button" role="menuitem" className="composer-menu-cell" onClick={() => setPane('model')}>
-                <span className="composer-menu-cell-label">Model</span>
+                <span className="composer-menu-cell-label">{t('Model')}</span>
                 <span className="composer-menu-cell-value">{modelLabel}</span>
                 <span className="composer-menu-cell-chevron" aria-hidden>›</span>
               </button>
               {reasoning !== undefined && (
                 <button type="button" role="menuitem" className="composer-menu-cell" onClick={() => setPane('effort')}>
-                  <span className="composer-menu-cell-label">Effort</span>
+                  <span className="composer-menu-cell-label">{t('Effort')}</span>
                   <span className="composer-menu-cell-value">{effortLabel}</span>
                   <span className="composer-menu-cell-chevron" aria-hidden>›</span>
                 </button>
@@ -203,12 +205,12 @@ export function ModelSelect({ models, selected, onSelect }: ModelSelectProps): J
                   })}
                 </section>
               ))}
-              {groups.length === 0 && <div className="composer-menu-empty">暂无可用模型</div>}
+              {groups.length === 0 && <div className="composer-menu-empty">{t('No models available')}</div>}
             </div>
           )}
           {pane === 'effort' && (
             <div className="composer-menu-groups">
-              {effortChoices.length === 0 && <div className="composer-menu-empty">该模型无可选 effort</div>}
+              {effortChoices.length === 0 && <div className="composer-menu-empty">{t('This model has no effort options')}</div>}
               {effortChoices.map((choice) => {
                 const isSelected = effectiveEffort === choice.effort
                 return (

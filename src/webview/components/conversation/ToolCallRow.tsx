@@ -13,6 +13,8 @@
 import { useState, type JSX } from 'react'
 import type { ToolCallNode } from '../../types'
 import { activeView, ToolCard } from './ToolCard'
+import { translate, type Locale } from '../../i18n'
+import { useI18n } from '../../use-i18n'
 
 /** Icon per card kind / tool-name heuristic. */
 function toolIcon(node: ToolCallNode): string {
@@ -53,7 +55,7 @@ function firstLine(text: string | undefined): string | null {
 }
 
 /** Salient summary derived from the raw arguments JSON of a view-less call. */
-function argsSummary(node: ToolCallNode): string {
+function argsSummary(node: ToolCallNode, locale: Locale): string {
   try {
     const args = JSON.parse(node.arguments) as Record<string, unknown>
     // bash -> command; read/edit/write -> path; grep/glob -> pattern.
@@ -67,32 +69,33 @@ function argsSummary(node: ToolCallNode): string {
   } catch {
     // Unparseable arguments: fall through to the bare status label.
   }
-  return node.status === 'pending' ? '调用中…' : ''
+  return node.status === 'pending' ? translate(locale, 'Calling…') : ''
 }
 
 /** Collapsed-row summary for one tool call. */
-export function toolSummary(node: ToolCallNode): string {
+export function toolSummary(node: ToolCallNode, locale: Locale = 'zh'): string {
   if (node.status === 'error') {
-    return firstLine(node.resultText) ?? node.error?.name ?? '调用失败'
+    return firstLine(node.resultText) ?? node.error?.name ?? translate(locale, 'Call failed')
   }
   const view = activeView(node)
   if (view !== null && 'title' in view && typeof view.title === 'string' && view.title !== '') {
     return view.title
   }
   if (view !== null && view.card === 'search') {
-    return `共 ${view.total} 条结果`
+    return translate(locale, '{count} results', { count: view.total })
   }
   if (view !== null && view.card === 'read') {
     return view.path
   }
   if (view !== null && view.card === 'web') {
-    return view.kind === 'fetch' ? view.url : `${view.sources.length} 个来源`
+    return view.kind === 'fetch' ? view.url : translate(locale, '{count} sources', { count: view.sources.length })
   }
-  return argsSummary(node)
+  return argsSummary(node, locale)
 }
 
 export function ToolCallRow(props: { node: ToolCallNode }): JSX.Element {
   const [open, setOpen] = useState(false)
+  const { locale } = useI18n()
   const { node } = props
   return (
     <div className={`tool-row tool-row-${node.status}`}>
@@ -109,7 +112,7 @@ export function ToolCallRow(props: { node: ToolCallNode }): JSX.Element {
         <span className="tool-row-name">{node.name}</span>
         <span className="tool-row-dot">·</span>
         <span className={`tool-row-summary${node.status === 'error' ? ' tool-row-summary-error' : ''}`}>
-          {toolSummary(node)}
+          {toolSummary(node, locale)}
         </span>
         <span className={`tool-row-chevron${open ? ' tool-row-chevron-open' : ''}`}>›</span>
       </button>

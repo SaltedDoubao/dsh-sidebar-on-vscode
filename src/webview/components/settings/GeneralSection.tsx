@@ -104,6 +104,9 @@ export function GeneralSection(): JSX.Element {
       />
       <OptionRow
         label={zh ? '语言' : 'Language'}
+        description={zh
+          ? '此设置用于 DSH WebUI；Sidebar 界面语言跟随 IDE。'
+          : 'This setting controls the DSH WebUI language; the Sidebar language follows the IDE.'}
         prefKey="language"
         options={[
           { value: 'zh', label: '中文' },

@@ -150,31 +150,29 @@
 /* --- toolbar row --- */
 
 .composer-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
 }
 
-/* The left tool group absorbs extra width and clips from its right edge, so
-   a too-tight row trims the LAST-hidden chip (permission — the first to hide)
-   instead of squeezing icons or pushing the send button out. */
+/* Attachment remains immediately left of permission. Both are fixed columns;
+   optional trailing extras absorb width pressure while send remains fixed. */
 .composer-tools {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
+  min-width: max-content;
 }
 
-/* The right group never shrinks: the send button always stays visible. */
-.composer-trailing {
+.composer-trailing-extras {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
-  flex: none;
   min-width: 0;
+  overflow: hidden;
 }
 
 .composer-chip {
@@ -907,7 +905,7 @@
 /* --- narrow-width responsive toolbar ---
    The webview width tracks the sidebar width, so viewport media queries are
    the width signal. As the panel narrows, toolbar extras hide in priority
-   order (access select → model → context meter → IDE toggle → attach button);
+   order (permission label → model → context meter → attach button);
    the send button and the input never hide. Breakpoints sit just above the
    measured real content width (Full access + "DeepSeek V4 Flash · Max" model
    chip + context ring ≈ 440px incl. card padding), so everything stays
@@ -927,12 +925,6 @@
 
 @media (max-width: 320px) {
   [data-composer-tool='meter'] {
-    display: none;
-  }
-}
-
-@media (max-width: 280px) {
-  [data-composer-tool='ide'] {
     display: none;
   }
 }

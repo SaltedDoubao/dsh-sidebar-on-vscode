@@ -14,6 +14,7 @@
 
 import { useState, type JSX } from 'react'
 import { MarkdownBlock } from '../conversation/MarkdownBlock'
+import { useI18n } from '../../use-i18n'
 
 /** PlanReviewPanel props: the plan markdown plus the three decision callbacks. */
 export interface PlanReviewPanelProps {
@@ -28,6 +29,7 @@ export interface PlanReviewPanelProps {
 export function PlanReviewPanel({ plan, onApprove, onRefuse, onChat }: PlanReviewPanelProps): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
 
   const settle = (send: () => Promise<void>): void => {
     setBusy(true)
@@ -40,21 +42,21 @@ export function PlanReviewPanel({ plan, onApprove, onRefuse, onChat }: PlanRevie
 
   return (
     <div className="ovl-card" data-plan-review>
-      <div className="ovl-strip"><span className="ovl-strip-dot" />Plan review</div>
-      <div className="ovl-body" data-plan-review-scroll tabIndex={0} role="group" aria-label="计划详情">
+      <div className="ovl-strip"><span className="ovl-strip-dot" />{t('Plan review')}</div>
+      <div className="ovl-body" data-plan-review-scroll tabIndex={0} role="group" aria-label={t('Plan details')}>
         <MarkdownBlock text={plan} streaming={false} />
       </div>
       <div className="ovl-footer">
         <div className="ovl-feedback" role="status">{error}</div>
         <div className="ovl-actions">
           <button type="button" className="ovl-btn ovl-btn-ghost" disabled={busy} onClick={() => { settle(onChat) }}>
-            Chat about it
+            {t('Chat about it')}
           </button>
           <button type="button" className="ovl-btn ovl-btn-outline" disabled={busy} onClick={() => { settle(onRefuse) }}>
-            Refuse
+            {t('Refuse')}
           </button>
           <button type="button" className="ovl-btn ovl-btn-primary" disabled={busy} onClick={() => { settle(onApprove) }}>
-            Approve
+            {t('Approve')}
           </button>
         </div>
       </div>

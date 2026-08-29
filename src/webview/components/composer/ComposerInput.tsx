@@ -18,6 +18,7 @@ import type { SkillEntry } from '../../../extension/protocol/views'
 import type { SessionId } from '../../../extension/protocol/brand'
 import { rpc } from '../../bridge'
 import { useAppStore } from '../../store'
+import { useI18n } from '../../use-i18n'
 
 /** Minimum visible rows (the textarea also starts with rows=2). */
 const MIN_ROWS = 2
@@ -218,6 +219,7 @@ export function ComposerInput({
   const [references, setReferences] = useState<SuggestItem[]>([])
   const skillsLoadedFor = useRef<SessionId | null>(null)
   const referencesSupported = useAppStore((state) => state.capabilities?.references !== false)
+  const { t } = useI18n()
 
   // Lazy skill catalog load, once per session.
   useEffect(() => {
@@ -254,7 +256,7 @@ export function ComposerInput({
             kind: 'file' as const,
             key: `file:${candidate.path}`,
             label: candidate.path.slice(candidate.path.lastIndexOf('/') + 1) || candidate.path,
-            description: `${candidate.kind === 'directory' ? '文件夹' : '文件'} · ${candidate.path}`,
+            description: `${candidate.kind === 'directory' ? t('Folder') : t('File')} · ${candidate.path}`,
             insert: fileMention(candidate),
             continue: candidate.kind === 'directory',
           })),
@@ -262,7 +264,7 @@ export function ComposerInput({
             kind: 'session' as const,
             key: `session:${candidate.sessionId}`,
             label: candidate.label,
-            description: `会话 · ${candidate.cwd ?? candidate.sessionId}`,
+            description: `${t('Session')} · ${candidate.cwd ?? candidate.sessionId}`,
             insert: candidate.mention,
           })),
         ].slice(0, 8))
@@ -272,7 +274,7 @@ export function ComposerInput({
       stale = true
       window.clearTimeout(timer)
     }
-  }, [referencesSupported, sessionId, suggestion])
+  }, [referencesSupported, sessionId, suggestion, t])
 
   // Slash popup rows: built-in host commands first, then the session's skill
   // catalog (both filtered by the token query), then mention files.
@@ -285,7 +287,10 @@ export function ComposerInput({
       kind: 'command' as const,
       key: c.name,
       label: c.name,
-      description: c.hint === undefined ? c.description : `${c.description} · ${c.hint}`,
+      description: (() => {
+        const description = c.name === 'goal' ? t('Set or view a long-running goal') : c.name === 'compact' ? t('Compact older conversation history') : t('Enter or leave plan mode')
+        return c.hint === undefined ? description : `${description} · ${c.hint}`
+      })(),
     }))
     const skillItems = filterSkills(skills, suggestion.query).map((s) => ({
       kind: 'skill' as const,
@@ -294,7 +299,7 @@ export function ComposerInput({
       description: s.description,
     }))
     return [...commands, ...skillItems].slice(0, 8)
-  }, [references, suggestion, skills])
+  }, [references, suggestion, skills, t])
   const popupOpen = suggestion !== null && items.length > 0
 
   // Auto-grow: shrink to the content height, capped at MAX_ROWS of line-height.
@@ -427,8 +432,8 @@ export function ComposerInput({
         value={value}
         rows={MIN_ROWS}
         disabled={disabled}
-        placeholder={running ? 'Do anything（运行中，发送将进入队列）' : 'Do anything'}
-        aria-label="消息输入"
+        placeholder={running ? t('Do anything (running; messages will be queued)') : t('Do anything')}
+        aria-label={t('Message input')}
         onChange={onChangeInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}

@@ -1,6 +1,10 @@
 .region-chat-list.chat-list { display:flex; flex-direction:column; overflow:visible; padding:2px 4px; position:relative; z-index:20; }
 .chat-list-header { display:flex; align-items:center; justify-content:space-between; min-height:34px; padding:6px 8px 4px; }
 .chat-list-title { font-size:.85em; color:var(--dsh-fg-muted); }
+.chat-list-mode-tabs { display:flex; align-items:center; gap:2px; }
+.chat-list-mode-tabs button { padding:3px 7px; border:0; border-radius:4px; color:var(--dsh-fg-muted); background:transparent; }
+.chat-list-mode-tabs button:hover { color:var(--dsh-fg); background:var(--vscode-list-hoverBackground,rgba(255,255,255,.06)); }
+.chat-list-mode-tabs button[aria-selected=true] { color:var(--dsh-fg); background:var(--dsh-bg-raised); }
 .chat-list-actions { display:inline-flex; gap:2px; }
 .icon-btn,.add-workspace-btn,.workspace-new,.workspace-actions { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; background:transparent; color:var(--dsh-fg-muted); border-radius:var(--dsh-radius); }
 .icon-btn:hover,.add-workspace-btn:hover,.workspace-new:hover,.workspace-actions:hover { background:var(--vscode-list-hoverBackground,rgba(255,255,255,.08)); color:var(--dsh-fg); }

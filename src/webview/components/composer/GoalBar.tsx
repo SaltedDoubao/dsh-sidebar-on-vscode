@@ -9,8 +9,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import type { GoalPhase, GoalProjection } from '../../../extension/protocol/goals'
+import type { GoalProjection } from '../../../extension/protocol/goals'
 import './GoalBar.css'
+import { translate, type Locale } from '../../i18n'
 
 export interface GoalBarProps {
   /** undefined = loading/capability absent, null = no current goal. */
@@ -19,13 +20,7 @@ export interface GoalBarProps {
   onPause: () => Promise<void>
   onResume: () => Promise<void>
   onClear: () => Promise<void>
-}
-
-const PHASE_LABEL: Record<GoalPhase, string> = {
-  active: '进行中',
-  paused: '已暂停',
-  blocked: '已受阻',
-  complete: '已完成',
+  locale?: Locale
 }
 
 /** Whether a projection should occupy space in the composer context stack. */
@@ -33,12 +28,13 @@ export function goalBarVisible(goal: GoalProjection | null | undefined): boolean
   return goal !== undefined && goal !== null && goal.goal.phase !== 'complete'
 }
 
-export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarProps): JSX.Element | null {
+export function GoalBar({ goal, onEdit, onPause, onResume, onClear, locale = 'zh' }: GoalBarProps): JSX.Element | null {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [clearedGoalId, setClearedGoalId] = useState<GoalProjection['goal']['id'] | null>(null)
+  const t = (key: Parameters<typeof translate>[1]): string => translate(locale, key)
   const pendingRef = useRef(false)
   const goalId = goal?.goal.id
 
@@ -87,11 +83,11 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
 
   if (editing) {
     return (
-      <div className="goal-bar" data-goal-bar role="group" aria-label="编辑目标">
+      <div className="goal-bar" data-goal-bar role="group" aria-label={t('Goal editor')}>
         <input
           className="goal-objective-input"
           type="text"
-          aria-label="目标内容"
+          aria-label={t('Goal content')}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -108,7 +104,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
           <button
             type="button"
             className="goal-action"
-            aria-label="保存目标"
+            aria-label={t('Save goal')}
             disabled={pending || draft.trim() === ''}
             onClick={() => void save()}
           >
@@ -119,7 +115,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
           <button
             type="button"
             className="goal-action"
-            aria-label="取消编辑"
+            aria-label={t('Cancel editing')}
             disabled={pending}
             onClick={() => setEditing(false)}
           >
@@ -137,7 +133,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
       className="goal-bar"
       data-goal-bar
       role="group"
-      aria-label="当前目标"
+      aria-label={t('Current goal')}
       title={snapshot.phase === 'blocked' ? snapshot.blockedReason?.message : undefined}
     >
       <span className="goal-icon" aria-hidden>
@@ -146,7 +142,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
           <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5" />
         </svg>
       </span>
-      <span className="goal-phase">{PHASE_LABEL[snapshot.phase]}</span>
+      <span className="goal-phase">{{ active: t('In progress'), paused: t('Paused'), blocked: t('Blocked'), complete: t('Completed') }[snapshot.phase]}</span>
       <span className="goal-objective" title={snapshot.objective}>{snapshot.objective}</span>
       {actionError !== null && <span className="goal-error" role="alert">{actionError}</span>}
       <div className="goal-actions">
@@ -154,7 +150,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
           <button
             type="button"
             className="goal-action"
-            aria-label="暂停目标"
+            aria-label={t('Pause goal')}
             disabled={pending}
             onClick={() => void run(onPause)}
           >
@@ -168,7 +164,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
           <button
             type="button"
             className="goal-action"
-            aria-label="恢复目标"
+            aria-label={t('Resume goal')}
             disabled={pending}
             onClick={() => void run(onResume)}
           >
@@ -180,7 +176,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
         <button
           type="button"
           className="goal-action"
-          aria-label="编辑目标"
+          aria-label={t('Goal editor')}
           disabled={pending}
           onClick={() => { setDraft(snapshot.objective); setEditing(true) }}
         >
@@ -191,7 +187,7 @@ export function GoalBar({ goal, onEdit, onPause, onResume, onClear }: GoalBarPro
         <button
           type="button"
           className="goal-action"
-          aria-label="清除目标"
+          aria-label={t('Clear goal')}
           disabled={pending}
           onClick={() => void clear()}
         >

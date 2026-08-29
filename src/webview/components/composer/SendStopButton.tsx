@@ -8,6 +8,7 @@
  */
 
 import type { JSX } from 'react'
+import { useI18n } from '../../use-i18n'
 
 export interface SendStopButtonProps {
   running: boolean
@@ -17,13 +18,14 @@ export interface SendStopButtonProps {
 }
 
 export function SendStopButton({ running, canSend, onSend, onStop }: SendStopButtonProps): JSX.Element {
+  const { t } = useI18n()
   if (running) {
     return (
       <button
         type="button"
         className="composer-primary"
-        aria-label="停止生成"
-        title="停止生成"
+        aria-label={t('Stop generating')}
+        title={t('Stop generating')}
         onClick={onStop}
       >
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
@@ -36,8 +38,8 @@ export function SendStopButton({ running, canSend, onSend, onStop }: SendStopBut
     <button
       type="button"
       className="composer-primary"
-      aria-label="发送"
-      title="发送"
+      aria-label={t('Send')}
+      title={t('Send')}
       disabled={!canSend}
       onClick={onSend}
     >

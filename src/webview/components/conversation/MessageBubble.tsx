@@ -13,6 +13,7 @@ import { rpc } from '../../bridge'
 import { useAppStore } from '../../store'
 import type { AssistantTextNode, UserMessageNode } from '../../types'
 import { MarkdownBlock } from './MarkdownBlock'
+import { useI18n } from '../../use-i18n'
 
 /** Format epoch ms as HH:MM. */
 function formatTime(time: number): string {
@@ -24,6 +25,7 @@ function formatTime(time: number): string {
 function AttachmentImage(props: { attachment: ImageAttachmentRef }): JSX.Element {
   const activeSessionId = useAppStore((s) => s.activeSessionId)
   const [src, setSrc] = useState<string | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     if (activeSessionId === null) return
@@ -43,12 +45,13 @@ function AttachmentImage(props: { attachment: ImageAttachmentRef }): JSX.Element
     }
   }, [activeSessionId, props.attachment.attachmentId])
 
-  if (src === null) return <span className="msg-user-image-placeholder">{props.attachment.name ?? '图片'}</span>
-  return <img src={src} alt={props.attachment.name ?? '附件图片'} />
+  if (src === null) return <span className="msg-user-image-placeholder">{props.attachment.name ?? t('Image')}</span>
+  return <img src={src} alt={props.attachment.name ?? t('Image attachment')} />
 }
 
 export function MessageBubble(props: { node: UserMessageNode }): JSX.Element {
   const [copied, setCopied] = useState(false)
+  const { t } = useI18n()
   const texts = props.node.blocks.filter((b) => b.type === 'text')
   const images = props.node.blocks.filter((b) => b.type === 'image')
   const plain = texts.map((b) => (b.type === 'text' ? b.text : '')).join('\n')
@@ -71,7 +74,7 @@ export function MessageBubble(props: { node: UserMessageNode }): JSX.Element {
       )}
       {plain !== '' && <div className="msg-user-bubble">{plain}</div>}
       <div className="msg-user-meta">
-        <button type="button" className="msg-copy" onClick={copy} title="复制">
+        <button type="button" className="msg-copy" onClick={copy} title={t('Copy')}>
           {copied ? '✓' : '⧉'}
         </button>
         <span className="msg-time">{formatTime(props.node.time)}</span>
@@ -166,6 +169,7 @@ export function AssistantBubble(props: { node: AssistantTextNode }): JSX.Element
   const feedbackAvailable = useAppStore((s) => s.capabilities?.feedback === true)
   const [feedback, setFeedback] = useState<FeedbackItem | null>(null)
   const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     if (!feedbackAvailable || activeSessionId === null || props.node.messageId === undefined) return
@@ -199,7 +203,7 @@ export function AssistantBubble(props: { node: AssistantTextNode }): JSX.Element
         if (deleted.ok) setFeedback(null)
         else if (deleted.error.current !== undefined) setFeedback(deleted.error.current)
       } else {
-        const note = askNote ? window.prompt('添加反馈备注', feedback?.note ?? '')?.trim() : feedback?.note
+        const note = askNote ? window.prompt(t('Add feedback note'), feedback?.note ?? '')?.trim() : feedback?.note
         if (askNote && note === undefined) return
         const written = await remoteFeedback<FeedbackItem>('messageFeedback/put', {
           sessionId: activeSessionId,
@@ -221,19 +225,19 @@ export function AssistantBubble(props: { node: AssistantTextNode }): JSX.Element
     <div className="msg-assistant">
       <MarkdownBlock text={props.node.text} streaming={props.node.streaming} />
       <div className="msg-actions">
-        <button type="button" className="msg-action" onClick={copy} title="复制">
-          {copied ? <span className="msg-action-copied">已复制</span> : <CopyIcon />}
+        <button type="button" className="msg-action" onClick={copy} title={t('Copy')}>
+          {copied ? <span className="msg-action-copied">{t('Copied')}</span> : <CopyIcon />}
         </button>
         {!props.node.streaming && (
-          <button type="button" className="msg-action" onClick={fork} title="分叉新对话">
+          <button type="button" className="msg-action" onClick={fork} title={t('Fork into new chat')}>
             <ForkIcon />
           </button>
         )}
         {!props.node.streaming && feedbackAvailable && props.node.messageId !== undefined && (
           <>
-            <button type="button" className={`msg-action${feedback?.rating === 'positive' ? ' active' : ''}`} disabled={feedbackBusy} onClick={() => { void rate('positive') }} title="有帮助">👍</button>
-            <button type="button" className={`msg-action${feedback?.rating === 'negative' ? ' active' : ''}`} disabled={feedbackBusy} onClick={() => { void rate('negative') }} title="没有帮助">👎</button>
-            <button type="button" className="msg-action" disabled={feedbackBusy} onClick={() => { void rate(feedback?.rating ?? 'positive', true) }} title="反馈备注">✎</button>
+            <button type="button" className={`msg-action${feedback?.rating === 'positive' ? ' active' : ''}`} disabled={feedbackBusy} onClick={() => { void rate('positive') }} title={t('Helpful')}>👍</button>
+            <button type="button" className={`msg-action${feedback?.rating === 'negative' ? ' active' : ''}`} disabled={feedbackBusy} onClick={() => { void rate('negative') }} title={t('Not helpful')}>👎</button>
+            <button type="button" className="msg-action" disabled={feedbackBusy} onClick={() => { void rate(feedback?.rating ?? 'positive', true) }} title={t('Feedback note')}>✎</button>
           </>
         )}
       </div>

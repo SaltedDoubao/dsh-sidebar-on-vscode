@@ -10,6 +10,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { MessageId } from '../../../extension/protocol/brand'
 import type { QueuedMessage } from '../../types'
+import { useI18n } from '../../use-i18n'
 
 export interface QueueDockProps {
   queue: QueuedMessage[]
@@ -24,6 +25,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
   const [editing, setEditing] = useState<{ id: MessageId; text: string } | null>(null)
   const [busy, setBusy] = useState<MessageId | null>(null)
   const [collapsed, setCollapsed] = useState(true)
+  const { t } = useI18n()
 
   // Reset transient state when the queue drains or the edited row disappears.
   useEffect(() => {
@@ -61,7 +63,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
           disabled={editing !== null || busy !== null}
           onClick={() => setCollapsed((v) => !v)}
         >
-          <span className="queue-count">{queue.length} 条排队消息</span>
+          <span className="queue-count">{t('{count} queued messages', { count: queue.length })}</span>
           <span className="queue-chevron" aria-hidden>{expanded ? '▾' : '▴'}</span>
         </button>
       )}
@@ -72,7 +74,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
               <input
                 autoFocus
                 className="queue-editor"
-                aria-label="编辑排队消息"
+                aria-label={t('Edit queued message')}
                 value={editing.text}
                 onChange={(e) => setEditing({ id: row.id, text: e.currentTarget.value })}
                 onKeyDown={(e) => {
@@ -92,7 +94,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
                   <button
                     type="button"
                     className="queue-action"
-                    aria-label="保存"
+                    aria-label={t('Save')}
                     disabled={busy !== null || editing.text.trim() === ''}
                     onClick={() => void saveEdit()}
                   >
@@ -101,7 +103,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
                   <button
                     type="button"
                     className="queue-action"
-                    aria-label="取消编辑"
+                    aria-label={t('Cancel editing')}
                     disabled={busy !== null}
                     onClick={() => setEditing(null)}
                   >
@@ -113,7 +115,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
                   <button
                     type="button"
                     className="queue-action"
-                    aria-label="编辑排队消息"
+                    aria-label={t('Edit queued message')}
                     disabled={busy !== null}
                     onClick={() => setEditing({ id: row.id, text: row.text })}
                   >
@@ -122,7 +124,7 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
                   <button
                     type="button"
                     className="queue-action"
-                    aria-label="删除排队消息"
+                    aria-label={t('Delete queued message')}
                     disabled={busy !== null}
                     onClick={() => void apply(row.id, () => onRemove(row.id))}
                   >
@@ -131,8 +133,8 @@ export function QueueDock({ queue, running, onEdit, onRemove, onSteer }: QueueDo
                   <button
                     type="button"
                     className="queue-action"
-                    aria-label="立即插话"
-                    title={running ? undefined : '仅运行中可插话'}
+                    aria-label={t('Steer now')}
+                    title={running ? undefined : t('Can only steer while running')}
                     disabled={busy !== null || !running || row.placement !== 'queued'}
                     onClick={() => void apply(row.id, () => onSteer(row.id))}
                   >

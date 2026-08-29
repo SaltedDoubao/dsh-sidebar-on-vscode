@@ -6,6 +6,8 @@ import { useAppStore } from '../../store'
 import { waitingSessionId as firstWaitingSessionId } from '../../store/overlay'
 import type { SessionGroupBy } from '../../store/sessions'
 import type { SessionMeta } from '../../types'
+import type { ConversationMode } from '../../types'
+import { useI18n } from '../../use-i18n'
 import './chat-list.css'
 
 const UNGROUPED = '__ungrouped__'
@@ -117,7 +119,12 @@ function SessionRow({ session, waiting, zh, onSelected, ...dragProps }: SessionR
   </li>
 }
 
-export function ChatListPanel(): JSX.Element {
+export interface ChatListPanelProps {
+  mode: ConversationMode
+  onModeChange: (mode: ConversationMode) => void
+}
+
+export function ChatListPanel({ mode, onModeChange }: ChatListPanelProps): JSX.Element {
   const sessions = useAppStore((state) => state.sessions)
   const workspaces = useAppStore((state) => state.workspaces)
   const activeSessionId = useAppStore((state) => state.activeSessionId)
@@ -135,6 +142,8 @@ export function ChatListPanel(): JSX.Element {
   const setExpanded = useAppStore((state) => state.setWorkspaceExpanded)
   const setLocalOrder = useAppStore((state) => state.setLocalSessionOrder)
   const zh = language === 'zh'
+  const { t } = useI18n()
+  const trajectoryAvailable = useAppStore((state) => state.capabilities?.trajectory === true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [viewMenuOpen, setViewMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -262,7 +271,12 @@ export function ChatListPanel(): JSX.Element {
 
   return <section className="region-chat-list chat-list" data-region="ChatListPanel" ref={panelRef}>
     <div className="chat-list-header">
-      <span className="chat-list-title">{zh ? '会话' : 'Chats'}</span>
+      {activeSessionId !== null && trajectoryAvailable ? (
+        <div className="chat-list-mode-tabs" role="tablist" aria-label={t('Conversation view')}>
+          <button type="button" role="tab" aria-selected={mode === 'chat'} onClick={() => onModeChange('chat')}>{t('Chat')}</button>
+          <button type="button" role="tab" aria-selected={mode === 'trajectory'} onClick={() => onModeChange('trajectory')}>{t('Trajectory')}</button>
+        </div>
+      ) : <span className="chat-list-title">{t('Chat')}</span>}
       <span className="chat-list-actions">
         <button type="button" className={`icon-btn${historyOpen ? ' icon-btn-active' : ''}`} title={zh ? '历史会话' : 'History'} onClick={() => setHistoryOpen((value) => !value)}>{runningCount > 0 ? <span className="chat-list-running-badge"><span className="chat-list-running-spinner" /><span className="chat-list-running-count">{runningCount}</span></span> : <Icon name="clock" />}</button>
         <button type="button" className="icon-btn" title={zh ? '设置' : 'Settings'} onClick={openSettings}><Icon name="gear" /></button>

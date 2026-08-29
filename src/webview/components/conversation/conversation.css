@@ -13,29 +13,6 @@
   padding: var(--dsh-gap) 10px;
 }
 
-.conversation-mode-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: color-mix(in srgb, var(--dsh-bg) 94%, transparent);
-}
-
-.conversation-mode-tabs button {
-  border: 0;
-  border-radius: 4px;
-  padding: 3px 8px;
-  color: var(--dsh-fg-muted);
-  background: transparent;
-}
-
-.conversation-mode-tabs button[aria-selected='true'] {
-  color: var(--dsh-fg);
-  background: var(--dsh-bg-raised);
-}
-
 .trajectory-list,
 .workflow-members {
   margin: 0;
