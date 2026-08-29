@@ -39,6 +39,18 @@ test('rpc pairs request/response by rpcId and returns the value', async () => {
   }
 })
 
+test('rpcWithId preserves the caller-owned id for prompt context correlation', async () => {
+  const fake = await startFakeHost()
+  try {
+    await withClient(fake, async (client) => {
+      await client.rpcWithId('session.list', {}, 'prompt-rpc-owned-by-extension')
+      assert.equal(fake.calls[0]?.rpcId, 'prompt-rpc-owned-by-extension')
+    })
+  } finally {
+    await fake.close()
+  }
+})
+
 test('rpc propagates business errors as RpcBusinessError with the code', async () => {
   const fake = await startFakeHost({ failRpcs: true })
   try {

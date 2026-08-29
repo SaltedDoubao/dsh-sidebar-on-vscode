@@ -66,6 +66,10 @@ export class DshAdapter {
     return this.transport.rpc<T>(method, payload)
   }
 
+  rpcWithId<T = unknown>(method: string, payload: unknown, rpcId: string): Promise<T> {
+    return this.transport.rpcWithId<T>(method, payload, rpcId)
+  }
+
   callUi<K extends UiRequest>(method: K, payload: UiRequestPayload<K>): Promise<UiRequestValue<K>> {
     if (!(UI_REQUESTS as readonly string[]).includes(method)) {
       return Promise.reject(new Error(`UI operation is not allowed: ${String(method)}`))

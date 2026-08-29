@@ -85,6 +85,7 @@ const receiptSchema = z.union([
 export interface DshTransport {
   connect(info: HostInfo): Promise<void>
   rpc<T = unknown>(method: string, params?: unknown): Promise<T>
+  rpcWithId<T = unknown>(method: string, params: unknown, rpcId: string): Promise<T>
   respond(rpcId: string, value: unknown): Promise<void>
   onMuxEvent(cb: (frame: MuxFrame) => void): () => void
   onHostEvent(cb: (frame: HostFrame) => void): () => void
@@ -138,10 +139,15 @@ export class DshClient implements DshTransport {
   async rpc<K extends RpcMethod>(method: K, params: RequestPayload<K>): Promise<ResponseValue<K>>
   async rpc<T = unknown>(method: string, params?: unknown): Promise<T>
   async rpc<T>(method: string, params?: unknown): Promise<T> {
+    return this.rpcWithId<T>(method, params, crypto.randomUUID())
+  }
+
+  /** Send an RPC with a caller-owned id, used to correlate a prompt with staged IDE context. */
+  async rpcWithId<T = unknown>(method: string, params: unknown, rpcId: string): Promise<T> {
     if (this.baseUrl === null) throw new Error('dsh client is not connected')
     const request: ClientRequest = {
       type: 'client-request',
-      rpcId: RpcId(crypto.randomUUID()),
+      rpcId: RpcId(rpcId),
       method,
       payload: params ?? {},
     }
