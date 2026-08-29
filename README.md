@@ -32,7 +32,9 @@ npm run package
 
 ### 瞬时 IDE 上下文（实验性）
 
-在设置面板中开启「瞬时 IDE 上下文（实验性）」（配置项 `deepseekHarness.ideContext.ephemeral.enabled`），可启用本地 IDE Bridge 服务。当配合 DSH IDE Context Runtime 插件使用时，将以每轮替换的方式在扩展宿主层自动注入当前编辑器选区、光标位置及工作区上下文，无需污染输入框文本，并在不可用时平滑静默回退。
+在设置面板中开启「瞬时 IDE 上下文（实验性）」（配置项 `deepseekHarness.ideContext.ephemeral.enabled`），可启用本地 IDE Bridge 服务。当配合 DSH IDE Context Runtime 插件使用时，将以每轮替换的方式在扩展宿主层自动注入当前编辑器选区、光标位置及工作区上下文，无需污染输入框文本。
+
+> **说明**：配套的 DSH IDE Context Runtime 插件目前仍在开发中，当前版本的本地 IDE Bridge 及相关配置项主要作为协议与架构占位；在 Runtime 插件未就绪时会自动静默回退至兼容注入模式，完整功能将在后续版本中随插件发布正式启用。
 
 ### 自定义 Host 启动命令
 

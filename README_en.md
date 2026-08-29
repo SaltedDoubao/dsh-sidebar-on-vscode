@@ -32,7 +32,9 @@ Click the settings button at the top-right of the sidebar or run `DSH Sidebar on
 
 ### Ephemeral IDE Context (Experimental)
 
-Enabling "Ephemeral IDE context (Experimental)" in the settings panel (configuration key `deepseekHarness.ideContext.ephemeral.enabled`) activates the local IDE Bridge service. When paired with the DSH IDE Context Runtime plugin, editor selection, cursor position, and workspace context are injected per-turn at the extension host boundary without polluting composer text, and gracefully falls back to compatible behavior when unavailable.
+Enabling "Ephemeral IDE context (Experimental)" in the settings panel (configuration key `deepseekHarness.ideContext.ephemeral.enabled`) activates the local IDE Bridge service. When paired with the DSH IDE Context Runtime plugin, editor selection, cursor position, and workspace context are injected per-turn at the extension host boundary without polluting composer text.
+
+> **Note**: The companion DSH IDE Context Runtime plugin is currently in development. The local IDE Bridge and related settings in this release serve as an architectural placeholder and protocol foundation. When the runtime plugin is not installed or unavailable, the extension automatically falls back to compatible injection mode; full functionality will be officially enabled in a future release alongside the runtime plugin.
 
 ### Custom Host Startup Command
 

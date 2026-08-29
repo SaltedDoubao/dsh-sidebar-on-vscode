@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Experimental Local IDE Bridge & Ephemeral Context**:
+- **Experimental Local IDE Bridge & Ephemeral Context (Preview / Protocol Placeholder)**:
   - Implemented the IDE Context Protocol v1 and local WebSocket bridge server (`deepseekHarness.ideContext.ephemeral.enabled`).
   - Added per-turn ephemeral editor context staging and replacement, keeping Composer user prompt text clean.
   - Added safe budget truncation (Unicode-safe head/tail retention) for oversized selections.
   - Added IDE context snapshot extraction (active editor, cursor, selection, workspace roots, language ID).
-  - Added discovery publishing to `.dsh/ide/` for pairing with DSH IDE Context Runtime plugins.
+  - Added discovery publishing to `.dsh/ide/` for pairing with DSH IDE Context Runtime plugins (companion runtime plugin is under development; falls back to compatible mode until released).
   - Supported caller-owned RPC IDs (`rpcWithId`) for deterministic context correlation.
 - **Internationalization (i18n)**:
   - Added comprehensive localization support with English and Simplified Chinese translations for VS Code commands, configuration settings, sidebar UI, and settings surface.
