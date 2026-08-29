@@ -1,7 +1,7 @@
 {
   "name": "dsh-sidebar-on-vscode",
-  "displayName": "DSH Sidebar on VSCode",
-  "description": "An extension that enables you to use DSH in vscode sidebar",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "1.0.0",
   "publisher": "SaltedDoubao",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "AI",
     "Other"
   ],
-  "tags": [
+  "keywords": [
     "agent",
     "ai",
     "deepseek",
@@ -27,13 +27,14 @@
     "keybindings"
   ],
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "activationEvents": [],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "deepseekHarness",
-          "title": "DSH Sidebar on VSCode",
+          "title": "%view.title%",
           "icon": "resources/icon.svg"
         }
       ]
@@ -42,7 +43,7 @@
       "deepseekHarness": [
         {
           "id": "deepseekHarness.sidebar",
-          "name": "DSH Sidebar on VSCode",
+          "name": "%view.title%",
           "type": "webview",
           "icon": "resources/icon.png"
         }
@@ -51,48 +52,48 @@
     "commands": [
       {
         "command": "deepseekHarness.newChat",
-        "title": "New Chat",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.newChat%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.openSettings",
-        "title": "Open Settings",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.openSettings%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.openFullPanel",
-        "title": "Open Full Panel",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.openFullPanel%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.insertSelection",
-        "title": "Insert Selection into Chat",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.insertSelection%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.insertActiveFile",
-        "title": "Insert Active File into Chat",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.insertActiveFile%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.exportSession",
-        "title": "Export Session",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.exportSession%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.stopHost",
-        "title": "Stop Host",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.stopHost%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.restartHost",
-        "title": "Restart Host",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.restartHost%",
+        "category": "%command.category%"
       },
       {
         "command": "deepseekHarness.showLogs",
-        "title": "Show Logs",
-        "category": "DSH Sidebar on VSCode"
+        "title": "%command.showLogs%",
+        "category": "%command.category%"
       }
     ],
     "menus": {
@@ -110,24 +111,24 @@
       ]
     },
     "configuration": {
-      "title": "DSH Sidebar on VSCode",
+      "title": "%configuration.title%",
       "properties": {
         "deepseekHarness.host.basePort": {
           "type": "number",
           "default": 3080,
           "minimum": 1,
           "maximum": 65526,
-          "description": "First loopback port to probe; up to ten consecutive ports are checked."
+          "description": "%configuration.host.basePort%"
         },
         "deepseekHarness.host.autoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Start a local DeepSeek Harness host if no compatible host is already running."
+          "description": "%configuration.host.autoStart%"
         },
         "deepseekHarness.host.executable": {
           "type": "string",
           "default": "",
-          "description": "Optional absolute path or PATH command name for the dsh executable."
+          "description": "%configuration.host.executable%"
         },
         "deepseekHarness.host.arguments": {
           "type": "array",
@@ -135,22 +136,22 @@
             "type": "string"
           },
           "default": [],
-          "description": "Arguments inserted after the configured executable and before the dsh web command. Shell command strings are not supported."
+          "description": "%configuration.host.arguments%"
         },
         "deepseekHarness.host.keepAliveOnExit": {
           "type": "boolean",
           "default": false,
-          "description": "Keep a host started by this extension alive after the last VS Code window closes."
+          "description": "%configuration.host.keepAliveOnExit%"
         },
         "deepseekHarness.ideContext.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Attach editor context to normal messages. Slash commands never receive automatic IDE context."
+          "description": "%configuration.ideContext.enabled%"
         },
         "deepseekHarness.notifications.onCompletion": {
           "type": "boolean",
           "default": false,
-          "description": "Show a notification when a background session completes."
+          "description": "%configuration.notifications.onCompletion%"
         }
       }
     }

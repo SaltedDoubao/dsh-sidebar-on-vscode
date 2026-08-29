@@ -1,0 +1,23 @@
+{
+  "extension.displayName": "DSH VS Code 侧边栏",
+  "extension.description": "在 VS Code 侧边栏中使用 DeepSeek Harness。",
+  "view.title": "DeepSeek Harness",
+  "command.category": "DeepSeek Harness",
+  "command.newChat": "新建会话",
+  "command.openSettings": "打开设置",
+  "command.openFullPanel": "在完整面板中打开",
+  "command.insertSelection": "将选中内容插入会话",
+  "command.insertActiveFile": "将当前文件插入会话",
+  "command.exportSession": "导出会话",
+  "command.stopHost": "停止 Host",
+  "command.restartHost": "重启 Host",
+  "command.showLogs": "显示日志",
+  "configuration.title": "DeepSeek Harness",
+  "configuration.host.basePort": "要探测的第一个本地回环端口；最多检查连续十个端口。",
+  "configuration.host.autoStart": "未找到兼容 Host 时，自动启动本地 DeepSeek Harness Host。",
+  "configuration.host.executable": "可选的 dsh 可执行文件绝对路径或 PATH 中的命令名称。",
+  "configuration.host.arguments": "插入到可执行文件之后、dsh web 命令之前的参数。不支持 Shell 命令字符串。",
+  "configuration.host.keepAliveOnExit": "最后一个 VS Code 窗口关闭后，仍保留由此扩展启动的 Host。",
+  "configuration.ideContext.enabled": "为普通消息附加编辑器上下文。斜杠命令不会自动接收 IDE 上下文。",
+  "configuration.notifications.onCompletion": "后台会话完成时显示通知。"
+}

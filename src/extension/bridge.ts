@@ -210,7 +210,7 @@ export class Bridge {
         await this.adapter.transport.answerQuestionBySessionId(message.sessionId, message.answers)
       }
     } catch (error) {
-      void vscode.window.showErrorMessage(`DeepSeek Harness response failed: ${errorMessage(error)}`)
+      void vscode.window.showErrorMessage(vscode.l10n.t('DeepSeek Harness response failed: {error}', { error: errorMessage(error) }))
     }
   }
 
@@ -293,6 +293,10 @@ export class Bridge {
     try {
       const scoped = this.scopeRequest(method, params)
       const result = await this.adapter.callUi(method, scoped as never)
+      if (method === 'workspace.create') {
+        const workspaceId = (result as { workspace?: { workspaceId?: unknown } })?.workspace?.workspaceId
+        if (typeof workspaceId === 'string') this.knownWorkspaceIds.add(workspaceId)
+      }
       this.post(webview, { type: 'rpc-result', id, result })
     } catch (error) {
       this.post(webview, { type: 'rpc-result', id, error: errorMessage(error) })
@@ -428,13 +432,13 @@ export class Bridge {
   private async exportSession(sessionId: SessionId): Promise<void> {
     const target = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(`deepseek-session-${sessionId}.zip`),
-      filters: { 'ZIP archive': ['zip'] },
-      saveLabel: 'Export Session',
+      filters: { [vscode.l10n.t('ZIP archive')]: ['zip'] },
+      saveLabel: vscode.l10n.t('Export Session'),
     })
     if (target === undefined) return
     const response = await this.adapter.exportSession(sessionId)
     await vscode.workspace.fs.writeFile(target, new Uint8Array(await response.arrayBuffer()))
-    void vscode.window.showInformationMessage('DeepSeek Harness session exported')
+    void vscode.window.showInformationMessage(vscode.l10n.t('DeepSeek Harness session exported'))
   }
 
   private async openWorkspaceFile(candidate: string): Promise<void> {
@@ -462,17 +466,17 @@ export class Bridge {
     if (!completed) return
     const enabled = vscode.workspace.getConfiguration('deepseekHarness').get<boolean>('notifications.onCompletion', false)
     if (!enabled || [...this.foregroundSessions.values()].includes(frame.sessionId)) return
-    void vscode.window.showInformationMessage(`DeepSeek Harness 后台会话已完成：${frame.sessionId}`)
+    void vscode.window.showInformationMessage(vscode.l10n.t('DeepSeek Harness background session completed: {sessionId}', { sessionId: frame.sessionId }))
   }
 
   private showInitializationError(error: unknown): void {
     if (!(error instanceof DshNotInstalledError)) {
-      void vscode.window.showErrorMessage(`DeepSeek Harness initialization failed: ${errorMessage(error)}`)
+      void vscode.window.showErrorMessage(vscode.l10n.t('DeepSeek Harness initialization failed: {error}', { error: errorMessage(error) }))
       return
     }
-    const copyAction = '复制安装命令'
+    const copyAction = vscode.l10n.t('Copy install command')
     void vscode.window.showErrorMessage(
-      `未检测到 DeepSeek Harness CLI。请先安装并重新打开侧边栏。安装命令：${error.installCommand}`,
+      vscode.l10n.t('DeepSeek Harness CLI was not found. Install it, then reopen the sidebar. Install command: {command}', { command: error.installCommand }),
       copyAction,
     ).then((selected) => {
       if (selected === copyAction) {

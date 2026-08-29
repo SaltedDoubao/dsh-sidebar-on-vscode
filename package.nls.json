@@ -1,0 +1,23 @@
+{
+  "extension.displayName": "DSH Sidebar on VSCode",
+  "extension.description": "Use DeepSeek Harness from the VS Code sidebar.",
+  "view.title": "DeepSeek Harness",
+  "command.category": "DeepSeek Harness",
+  "command.newChat": "New Chat",
+  "command.openSettings": "Open Settings",
+  "command.openFullPanel": "Open Full Panel",
+  "command.insertSelection": "Insert Selection into Chat",
+  "command.insertActiveFile": "Insert Active File into Chat",
+  "command.exportSession": "Export Session",
+  "command.stopHost": "Stop Host",
+  "command.restartHost": "Restart Host",
+  "command.showLogs": "Show Logs",
+  "configuration.title": "DeepSeek Harness",
+  "configuration.host.basePort": "First loopback port to probe; up to ten consecutive ports are checked.",
+  "configuration.host.autoStart": "Start a local DeepSeek Harness host if no compatible host is already running.",
+  "configuration.host.executable": "Optional absolute path or PATH command name for the dsh executable.",
+  "configuration.host.arguments": "Arguments inserted after the configured executable and before the dsh web command. Shell command strings are not supported.",
+  "configuration.host.keepAliveOnExit": "Keep a host started by this extension alive after the last VS Code window closes.",
+  "configuration.ideContext.enabled": "Attach editor context to normal messages. Slash commands never receive automatic IDE context.",
+  "configuration.notifications.onCompletion": "Show a notification when a background session completes."
+}

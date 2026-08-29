@@ -1,0 +1,14 @@
+{
+  "DeepSeek Harness response failed: {error}": "DeepSeek Harness 响应失败：{error}",
+  "ZIP archive": "ZIP 压缩包",
+  "Export Session": "导出会话",
+  "DeepSeek Harness session exported": "DeepSeek Harness 会话已导出",
+  "DeepSeek Harness background session completed: {sessionId}": "DeepSeek Harness 后台会话已完成：{sessionId}",
+  "DeepSeek Harness initialization failed: {error}": "DeepSeek Harness 初始化失败：{error}",
+  "Copy install command": "复制安装命令",
+  "DeepSeek Harness CLI was not found. Install it, then reopen the sidebar. Install command: {command}": "未检测到 DeepSeek Harness CLI。请先安装并重新打开侧边栏。安装命令：{command}",
+  "DeepSeek Harness Host stopped": "DeepSeek Harness Host 已停止",
+  "DeepSeek Harness Host restarted": "DeepSeek Harness Host 已重启",
+  "DeepSeek Harness Settings": "DeepSeek Harness 设置",
+  "DeepSeek Harness": "DeepSeek Harness"
+}

@@ -1,0 +1,14 @@
+{
+  "DeepSeek Harness response failed: {error}": "DeepSeek Harness response failed: {error}",
+  "ZIP archive": "ZIP archive",
+  "Export Session": "Export Session",
+  "DeepSeek Harness session exported": "DeepSeek Harness session exported",
+  "DeepSeek Harness background session completed: {sessionId}": "DeepSeek Harness background session completed: {sessionId}",
+  "DeepSeek Harness initialization failed: {error}": "DeepSeek Harness initialization failed: {error}",
+  "Copy install command": "Copy install command",
+  "DeepSeek Harness CLI was not found. Install it, then reopen the sidebar. Install command: {command}": "DeepSeek Harness CLI was not found. Install it, then reopen the sidebar. Install command: {command}",
+  "DeepSeek Harness Host stopped": "DeepSeek Harness Host stopped",
+  "DeepSeek Harness Host restarted": "DeepSeek Harness Host restarted",
+  "DeepSeek Harness Settings": "DeepSeek Harness Settings",
+  "DeepSeek Harness": "DeepSeek Harness"
+}

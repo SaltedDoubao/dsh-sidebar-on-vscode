@@ -72,11 +72,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('deepseekHarness.stopHost', async () => {
       await bridge.stop()
-      void vscode.window.showInformationMessage('DeepSeek Harness Host stopped')
+      void vscode.window.showInformationMessage(vscode.l10n.t('DeepSeek Harness Host stopped'))
     }),
     vscode.commands.registerCommand('deepseekHarness.restartHost', async () => {
       await bridge.restart()
-      void vscode.window.showInformationMessage('DeepSeek Harness Host restarted')
+      void vscode.window.showInformationMessage(vscode.l10n.t('DeepSeek Harness Host restarted'))
     }),
     vscode.commands.registerCommand('deepseekHarness.showLogs', () => log.show(true)),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -113,7 +113,7 @@ function openSettingsPanel(context: vscode.ExtensionContext, bridge: Bridge): vo
   }
   const panel = vscode.window.createWebviewPanel(
     'deepseekHarness.settings',
-    'DeepSeek Harness 设置',
+    vscode.l10n.t('DeepSeek Harness Settings'),
     vscode.ViewColumn.Active,
     {
       enableScripts: true,
@@ -133,7 +133,7 @@ function openSettingsPanel(context: vscode.ExtensionContext, bridge: Bridge): vo
 function openFullPanel(context: vscode.ExtensionContext, bridge: Bridge): void {
   const panel = vscode.window.createWebviewPanel(
     'deepseekHarness.fullPanel',
-    'DeepSeek Harness',
+    vscode.l10n.t('DeepSeek Harness'),
     vscode.ViewColumn.Active,
     {
       enableScripts: true,
