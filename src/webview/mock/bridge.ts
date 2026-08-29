@@ -666,7 +666,7 @@ function waitInit(): Promise<InitPayload> {
 
 async function waitSettingsInit(): Promise<SettingsInitPayload> {
   const init = await waitInit()
-  return { hostVersion: init.hostVersion, vscodeLanguage: init.vscodeLanguage, capabilities: init.capabilities }
+  return { hostVersion: init.hostVersion, vscodeLanguage: init.vscodeLanguage, capabilities: init.capabilities, ideContextEphemeralEnabled: false }
 }
 
 /** Mock rpc: dispatch on the method name over the fake data above. */
@@ -1028,6 +1028,7 @@ function exportSession(_sessionId: SessionId): void {}
 function openFile(_path: string): void {}
 function openExternal(_href: string): void {}
 function setIdeContext(_enabled: boolean): void {}
+function setIdeContextEphemeral(_enabled: boolean): void {}
 function setActiveSession(_sessionId: SessionId | null): void {}
 function onSettingsRefresh(cb: () => void): () => void {
   settingsRefreshListeners.add(cb)
@@ -1127,6 +1128,6 @@ export const mockBridge: BridgeClient = {
   rpc, onEvent, onHostStatus, onCommand, onWorkspaceChanged, waitInit,
   respondApproval, respondQuestion, onIdeContent, requestIdeContent, fetchIdeContent,
   onIdeContextMeta, requestIdeContextMeta, addWorkspace,
-  selectWorkspace, openFolder, exportSession, openFile, openExternal, setIdeContext, setActiveSession,
+  selectWorkspace, openFolder, exportSession, openFile, openExternal, setIdeContext, setIdeContextEphemeral, setActiveSession,
   waitSettingsInit, onSettingsInit, onSettingsRefresh, onSettingsInitError, openSettings, closeSettings,
 }

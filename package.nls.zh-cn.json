@@ -19,5 +19,6 @@
   "configuration.host.arguments": "插入到可执行文件之后、dsh web 命令之前的参数。不支持 Shell 命令字符串。",
   "configuration.host.keepAliveOnExit": "最后一个 VS Code 窗口关闭后，仍保留由此扩展启动的 Host。",
   "configuration.ideContext.enabled": "为普通消息附加编辑器上下文。斜杠命令不会自动接收 IDE 上下文。",
+  "configuration.ideContext.ephemeral.enabled": "实验性功能：DSH IDE Context Runtime 插件可用时，使用本地 IDE Bridge 和每轮替换的瞬时上下文；不可用时静默回退。",
   "configuration.notifications.onCompletion": "后台会话完成时显示通知。"
 }

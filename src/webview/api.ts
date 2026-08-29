@@ -72,6 +72,7 @@ export interface BridgeClient {
   openFile: (path: string) => void
   openExternal: (href: string) => void
   setIdeContext: (enabled: boolean) => void
+  setIdeContextEphemeral: (enabled: boolean) => void
   setActiveSession: (sessionId: SessionId | null) => void
   waitSettingsInit: () => Promise<SettingsInitPayload>
   onSettingsInit: (cb: (payload: SettingsInitPayload) => void) => () => void
@@ -156,6 +157,7 @@ if (typeof window !== 'undefined') {
           hostVersion: message.hostVersion,
           vscodeLanguage: message.vscodeLanguage,
           capabilities: message.capabilities,
+          ideContextEphemeralEnabled: message.ideContextEphemeralEnabled,
         }
         const waiters = settingsInitWaiters.splice(0)
         for (const waiter of waiters) waiter(settingsInitPayload)
@@ -348,6 +350,10 @@ export function openExternal(href: string): void {
 
 export function setIdeContext(enabled: boolean): void {
   vscode?.postMessage({ type: 'set-ide-context', enabled })
+}
+
+export function setIdeContextEphemeral(enabled: boolean): void {
+  vscode?.postMessage({ type: 'set-ide-context-ephemeral', enabled })
 }
 
 export function setActiveSession(sessionId: SessionId | null): void {

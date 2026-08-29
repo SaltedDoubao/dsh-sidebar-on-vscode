@@ -18,6 +18,7 @@ export function SettingsApp(): JSX.Element {
         hostVersion: payload.hostVersion,
         capabilities: payload.capabilities,
         hostStatus: 'ready',
+        ideContextEphemeralEnabled: payload.ideContextEphemeralEnabled,
         uiPrefs: {
           ...useAppStore.getState().uiPrefs,
           language: payload.vscodeLanguage.toLowerCase().startsWith('zh') ? 'zh' : 'en',

@@ -148,6 +148,11 @@
           "default": false,
           "description": "%configuration.ideContext.enabled%"
         },
+        "deepseekHarness.ideContext.ephemeral.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.ideContext.ephemeral.enabled%"
+        },
         "deepseekHarness.notifications.onCompletion": {
           "type": "boolean",
           "default": false,

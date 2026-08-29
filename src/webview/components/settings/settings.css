@@ -182,6 +182,8 @@
 .settings-field-label { font-size: 13px; font-weight: 600; }
 .settings-field-desc { grid-column: 1; color: var(--settings-muted); font-size: 11px; line-height: 1.4; }
 .settings-field > .settings-error { grid-column: 1 / -1; }
+.settings-switch { display: inline-flex; align-items: center; gap: 7px; justify-self: start; font-size: 12px; cursor: pointer; }
+.settings-switch input { accent-color: var(--vscode-focusBorder); }
 
 .settings-segment { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .settings-segment-item {

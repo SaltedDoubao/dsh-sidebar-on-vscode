@@ -20,3 +20,16 @@ test('language setting explains WebUI and Sidebar locale ownership', async () =>
   assert.match(source, /此设置用于 DSH WebUI；Sidebar 界面语言跟随 IDE。/)
   assert.match(source, /This setting controls the DSH WebUI language; the Sidebar language follows the IDE\./)
 })
+
+test('experimental ephemeral IDE context is opt-in and documented in both languages', async () => {
+  const [manifest, source] = await Promise.all([
+    readFile('package.json', 'utf8'),
+    readFile('src/webview/components/settings/GeneralSection.tsx', 'utf8'),
+  ])
+  const parsed = JSON.parse(manifest) as { contributes: { configuration: { properties: Record<string, { default?: unknown }> } } }
+  assert.equal(parsed.contributes.configuration.properties['deepseekHarness.ideContext.ephemeral.enabled']?.default, false)
+  assert.match(source, /瞬时 IDE 上下文（实验性）/)
+  assert.match(source, /Ephemeral IDE context \(Experimental\)/)
+  assert.match(source, /静默使用兼容注入/)
+  assert.match(source, /silently falls back to compatible injection/)
+})

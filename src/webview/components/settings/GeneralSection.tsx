@@ -61,6 +61,8 @@ export function GeneralSection(): JSX.Element {
   const defaultPresetId = useAppStore((state) => state.defaultPresetId)
   const selectDefaultPreset = useAppStore((state) => state.selectDefaultPreset)
   const settingsWritable = useAppStore((state) => state.settingsWritable)
+  const ideContextEphemeralEnabled = useAppStore((state) => state.ideContextEphemeralEnabled)
+  const setIdeContextEphemeralEnabled = useAppStore((state) => state.setIdeContextEphemeralEnabled)
   const [presetBusy, setPresetBusy] = useState(false)
   const [presetFailure, setPresetFailure] = useState<string | null>(null)
   const zh = language === 'zh'
@@ -113,6 +115,22 @@ export function GeneralSection(): JSX.Element {
           { value: 'en', label: 'English' },
         ]}
       />
+      <div className="settings-field" data-pref="ideContextEphemeral">
+        <div className="settings-field-label">{zh ? '瞬时 IDE 上下文（实验性）' : 'Ephemeral IDE context (Experimental)'}</div>
+        <div className="settings-field-desc">
+          {zh
+            ? '启用 IDE Bridge 和每轮替换的上下文注入。需要 DSH IDE Context Runtime 插件；插件不可用时静默使用兼容注入。'
+            : 'Enables the IDE Bridge and per-turn context replacement. Requires the DSH IDE Context Runtime plugin; silently falls back to compatible injection when unavailable.'}
+        </div>
+        <label className="settings-switch">
+          <input
+            type="checkbox"
+            checked={ideContextEphemeralEnabled}
+            onChange={(event) => setIdeContextEphemeralEnabled(event.target.checked)}
+          />
+          <span>{ideContextEphemeralEnabled ? (zh ? '已启用' : 'Enabled') : (zh ? '已关闭' : 'Disabled')}</span>
+        </label>
+      </div>
       <OptionRow
         label={zh ? '外观' : 'Appearance'}
         prefKey="appearance"

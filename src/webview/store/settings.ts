@@ -13,7 +13,7 @@ import type {
   SettingsNamespaceView,
   SettingsPathOpView,
 } from '../../extension/protocol/settings'
-import { rpc } from '../bridge'
+import { rpc, setIdeContextEphemeral } from '../bridge'
 import type { PermissionMode } from '../types'
 import type { AppStore } from './index'
 
@@ -183,6 +183,8 @@ export interface SettingsSlice {
   uiPrefs: UiPrefs
   /** Per-preference persistence target (settings namespace or localStorage). */
   uiPrefSources: Record<keyof UiPrefs, UiPrefSource>
+  /** Extension-owned experimental IDE Bridge switch. */
+  ideContextEphemeralEnabled: boolean
 
   /** Load namespaces + providers + credentials + presets. */
   loadSettings: () => Promise<void>
@@ -198,6 +200,7 @@ export interface SettingsSlice {
   removeProvider: (target: ProviderTarget) => Promise<void>
   /** Persist one UI preference (settings namespace when bound, else local). */
   setUiPref: <K extends keyof UiPrefs>(key: K, value: UiPrefs[K]) => Promise<void>
+  setIdeContextEphemeralEnabled: (enabled: boolean) => void
   /**
    * Startup sync: pull the host's permission.defaultPreset into the composer's
    * permission chip (and uiPrefs), so a saved default is what new sessions show.
@@ -226,6 +229,12 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   defaultPresetId: '',
   uiPrefs: { ...DEFAULT_UI_PREFS },
   uiPrefSources: { language: 'local', appearance: 'local', busyEnter: 'local', permissionMode: 'local' },
+  ideContextEphemeralEnabled: false,
+
+  setIdeContextEphemeralEnabled: (enabled) => {
+    setIdeContextEphemeral(enabled)
+    set({ ideContextEphemeralEnabled: enabled })
+  },
 
   loadSettings: async () => {
     set({ settingsLoading: true, settingsError: null })

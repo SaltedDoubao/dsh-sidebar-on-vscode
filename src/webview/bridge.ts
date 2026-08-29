@@ -41,6 +41,7 @@ export const exportSession = client.exportSession
 export const openFile = client.openFile
 export const openExternal = client.openExternal
 export const setIdeContext = client.setIdeContext
+export const setIdeContextEphemeral = client.setIdeContextEphemeral
 export const setActiveSession = client.setActiveSession
 export const waitSettingsInit = client.waitSettingsInit
 export const onSettingsInit = client.onSettingsInit

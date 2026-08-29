@@ -19,5 +19,6 @@
   "configuration.host.arguments": "Arguments inserted after the configured executable and before the dsh web command. Shell command strings are not supported.",
   "configuration.host.keepAliveOnExit": "Keep a host started by this extension alive after the last VS Code window closes.",
   "configuration.ideContext.enabled": "Attach editor context to normal messages. Slash commands never receive automatic IDE context.",
+  "configuration.ideContext.ephemeral.enabled": "Experimental: use the local IDE Bridge and per-turn ephemeral context when the DSH IDE Context Runtime plugin is available. Falls back silently when unavailable.",
   "configuration.notifications.onCompletion": "Show a notification when a background session completes."
 }

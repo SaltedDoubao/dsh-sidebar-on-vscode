@@ -83,6 +83,7 @@ export interface SettingsInitPayload {
   hostVersion: string
   vscodeLanguage: string
   capabilities: CapabilityMatrix
+  ideContextEphemeralEnabled: boolean
 }
 
 export interface WorkspaceRoot {
@@ -148,6 +149,7 @@ export type WebviewMessage =
   | { type: 'open-file'; path: string }
   | { type: 'open-external'; href: string }
   | { type: 'set-ide-context'; enabled: boolean }
+  | { type: 'set-ide-context-ephemeral'; enabled: boolean }
   /** Foreground identity used only to suppress duplicate native completion notifications. */
   | { type: 'active-session'; sessionId: SessionId | null }
   /** Open/close the singleton editor-area settings page. */
