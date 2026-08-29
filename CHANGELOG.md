@@ -5,16 +5,22 @@ All notable changes to the "dsh-sidebar-on-vscode" extension will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-08-29
+
+### Documentation
+
+- Clarified in `README` and documentation that the companion DSH IDE Context Runtime plugin is currently under development, and the local IDE Bridge / ephemeral context settings serve as an architectural placeholder until officially enabled in an upcoming release.
+
 ## [1.1.0] - 2026-08-29
 
 ### Added
 
-- **Experimental Local IDE Bridge & Ephemeral Context (Preview / Protocol Placeholder)**:
+- **Experimental Local IDE Bridge & Ephemeral Context**:
   - Implemented the IDE Context Protocol v1 and local WebSocket bridge server (`deepseekHarness.ideContext.ephemeral.enabled`).
   - Added per-turn ephemeral editor context staging and replacement, keeping Composer user prompt text clean.
   - Added safe budget truncation (Unicode-safe head/tail retention) for oversized selections.
   - Added IDE context snapshot extraction (active editor, cursor, selection, workspace roots, language ID).
-  - Added discovery publishing to `.dsh/ide/` for pairing with DSH IDE Context Runtime plugins (companion runtime plugin is under development; falls back to compatible mode until released).
+  - Added discovery publishing to `.dsh/ide/` for pairing with DSH IDE Context Runtime plugins.
   - Supported caller-owned RPC IDs (`rpcWithId`) for deterministic context correlation.
 - **Internationalization (i18n)**:
   - Added comprehensive localization support with English and Simplified Chinese translations for VS Code commands, configuration settings, sidebar UI, and settings surface.
