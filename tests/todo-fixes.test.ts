@@ -197,6 +197,30 @@ test('permission switches wait for the host projection and retain errors', async
   assert.match(useAppStore.getState().permissionError ?? '', /未识别权限命令|did not recognize/)
 })
 
+test('permission selector uses and updates the next-session default without a history session', async () => {
+  const { defaultPermissionProjection } = await import('../src/webview/components/composer/permission-select-model')
+  const { useAppStore } = await import('../src/webview/store')
+
+  assert.equal(defaultPermissionProjection('full-access').currentValue, 'danger-full-access')
+  assert.deepEqual(
+    defaultPermissionProjection('workspace-write').options.map((option) => option.value),
+    ['read-only', 'workspace-write', 'danger-full-access'],
+  )
+
+  useAppStore.setState({
+    activeSessionId: null,
+    permissions: null,
+    permissionSwitchingTo: null,
+    permissionError: null,
+    uiPrefSources: { ...useAppStore.getState().uiPrefSources, permissionMode: 'local' },
+    uiPrefs: { ...useAppStore.getState().uiPrefs, permissionMode: 'workspace-write' },
+  })
+  await useAppStore.getState().setPermissionPreset('read-only')
+  assert.equal(useAppStore.getState().uiPrefs.permissionMode, 'read-only')
+  assert.equal(useAppStore.getState().permissions, null)
+  assert.equal(useAppStore.getState().permissionSwitchingTo, null)
+})
+
 test('sending a message moves the session to the top of the list', async () => {
   const { useAppStore } = await import('../src/webview/store')
   const state = useAppStore.getState()

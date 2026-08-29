@@ -14,3 +14,9 @@ test('settings.openDocument is explicitly allowed and legacy modal traces are ab
     assert.equal(`${app}\n${store}\n${css}`.includes(legacy), false, `legacy settings modal trace remains: ${legacy}`)
   }
 })
+
+test('language setting explains WebUI and Sidebar locale ownership', async () => {
+  const source = await readFile('src/webview/components/settings/GeneralSection.tsx', 'utf8')
+  assert.match(source, /此设置用于 DSH WebUI；Sidebar 界面语言跟随 IDE。/)
+  assert.match(source, /This setting controls the DSH WebUI language; the Sidebar language follows the IDE\./)
+})

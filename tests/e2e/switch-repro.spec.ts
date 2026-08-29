@@ -117,7 +117,7 @@ test('real question panel survives switching away and back (live)', async ({ pag
   } else {
     await page.locator('.ovl-custom-input').fill('继续')
   }
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: /^(提交|Submit)$/ }).click()
   await expect(panel).not.toBeVisible({ timeout: 30_000 })
 })
 
@@ -151,7 +151,7 @@ test('answering a real question resolves it and the agent continues (live)', asy
   const option = page.locator('.ovl-option').first()
   const label = (await option.getAttribute('aria-label')) ?? '继续'
   await option.click()
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: /^(提交|Submit)$/ }).click()
 
   // The real host accepts the answer (real rpcId) and broadcasts
   // question/resolved; the panel clears and the agent continues producing.

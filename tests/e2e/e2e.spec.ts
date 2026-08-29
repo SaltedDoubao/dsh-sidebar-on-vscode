@@ -109,21 +109,21 @@ test('mock dsh projections drive the permission picker and context detail popove
 
   const permission = page.locator('.permission-trigger')
   await expect(permission).toBeVisible()
-  await expect(permission).toContainText('Workspace Write')
+  await expect(permission).toContainText('工作区可写')
   await permission.click()
-  await expect(page.locator('.permission-menu')).toContainText('Read Only')
-  await expect(page.locator('.permission-menu')).toContainText('Full access')
-  await page.locator('.permission-menu .composer-menu-item', { hasText: 'Read Only' }).click()
-  await expect(permission).toContainText('Read Only')
+  await expect(page.locator('.permission-menu')).toContainText('只读')
+  await expect(page.locator('.permission-menu')).toContainText('完全访问')
+  await page.locator('.permission-menu .composer-menu-item', { hasText: '只读' }).click()
+  await expect(permission).toContainText('只读')
 
   await permission.click()
-  await page.locator('.permission-menu .composer-menu-item', { hasText: 'Full access' }).click()
+  await page.locator('.permission-menu .composer-menu-item', { hasText: '完全访问' }).click()
   const confirmation = page.locator('.composer-dialog')
   await expect(confirmation).toBeVisible()
   await expect(confirmation.locator('.composer-btn-danger')).toBeDisabled()
   await confirmation.locator('input[type=checkbox]').check()
   await confirmation.locator('.composer-btn-danger').click()
-  await expect(permission).toContainText('Full access')
+  await expect(permission).toContainText('完全访问')
 
   const meter = page.locator('.context-meter-trigger')
   await expect(meter).toHaveAttribute('title', '上下文已用: 45%')
@@ -201,7 +201,7 @@ test('question panel appears on a question/requested frame and answers clear it'
   await expect(page.locator('.composer-input')).not.toBeVisible()
 
   await page.getByRole('radio', { name: '继续', exact: true }).click()
-  await page.getByRole('button', { name: 'Submit' }).click()
+  await page.getByRole('button', { name: '提交' }).click()
 
   await expect(panel).not.toBeVisible()
   await expect(page.locator('.composer-input')).toBeVisible()
@@ -242,7 +242,7 @@ test('a question that arrived while the page was closed replays on return', asyn
   await expect(panel).toContainText('继续吗？')
 
   await page2.getByRole('radio', { name: '继续', exact: true }).click()
-  await page2.getByRole('button', { name: 'Submit' }).click()
+  await page2.getByRole('button', { name: /^(提交|Submit)$/ }).click()
   await expect(panel).not.toBeVisible()
   // Clear the extension-side retention (host confirmation mirror).
   harness.emitMux({ type: 'question/resolved', sessionId, questionRpcId: 'e2e-q-rpc-5' as never, outcome: 'answered' })

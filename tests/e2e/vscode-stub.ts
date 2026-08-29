@@ -69,6 +69,13 @@ export const env = {
   openExternal: (): Promise<boolean> => Promise.resolve(true),
 }
 
+export const l10n = {
+  t: (message: string, values?: Record<string, unknown>): string => {
+    if (values === undefined) return message
+    return message.replace(/\{([^}]+)\}/g, (match, key: string) => String(values[key] ?? match))
+  },
+}
+
 export class Disposable {
   static from(...disposables: Array<{ dispose(): void }>): Disposable {
     return new Disposable(() => {
