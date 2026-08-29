@@ -5,12 +5,16 @@ import { DshClient } from './dsh-client'
 import { HostLeaseCoordinator } from './host-lease'
 import { HostManager } from './host-manager'
 import { SidebarProvider, renderHtml } from './sidebar-provider'
+import { IdeBridgeServer } from './ide/bridge-server'
+import { IdeContextProvider } from './ide/context-provider'
+import { IdePromptContext } from './ide/prompt-context'
 
 let host: HostManager | null = null
 let adapter: DshAdapter | null = null
 let lease: HostLeaseCoordinator | null = null
 let output: vscode.OutputChannel | null = null
 let settingsPanel: vscode.WebviewPanel | null = null
+let ideBridge: IdeBridgeServer | null = null
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const log = vscode.window.createOutputChannel('DeepSeek Harness', { log: true })
@@ -31,11 +35,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const client = new DshClient()
   client.onLog = (line) => log.appendLine(line)
   const dshAdapter = new DshAdapter(client)
+  const ideContextProvider = new IdeContextProvider(coordinator.instanceId, context)
+  const promptContext = new IdePromptContext(dshAdapter, ideContextProvider, (line) => log.appendLine(line))
+  const ideServer = new IdeBridgeServer(ideContextProvider, context, (line) => log.appendLine(line))
+  ideBridge = ideServer
+  if (config.get<boolean>('ideContext.ephemeral.enabled', false)) {
+    await ideServer.start().catch((error) => log.appendLine(`[ide-bridge] start failed: ${String(error)}`))
+  }
   let bridge!: Bridge
   bridge = new Bridge(dshAdapter, hostManager, context, {
     openSettings: () => openSettingsPanel(context, bridge),
     closeSettings: () => settingsPanel?.dispose(),
-  })
+    selectedWorkspaceChanged: () => { void ideServer.refreshDiscovery() },
+  }, promptContext)
   const provider = new SidebarProvider(context, bridge)
 
   host = hostManager
@@ -80,12 +92,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('deepseekHarness.showLogs', () => log.show(true)),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (!event.affectsConfiguration('deepseekHarness.host')) return
       const next = vscode.workspace.getConfiguration('deepseekHarness')
-      hostManager.basePort = next.get<number>('host.basePort', 3080)
-      hostManager.autoStart = next.get<boolean>('host.autoStart', true)
-      hostManager.executable = next.get<string>('host.executable', '')
-      hostManager.arguments = [...next.get<string[]>('host.arguments', [])]
+      if (event.affectsConfiguration('deepseekHarness.host')) {
+        hostManager.basePort = next.get<number>('host.basePort', 3080)
+        hostManager.autoStart = next.get<boolean>('host.autoStart', true)
+        hostManager.executable = next.get<string>('host.executable', '')
+        hostManager.arguments = [...next.get<string[]>('host.arguments', [])]
+      }
+      if (event.affectsConfiguration('deepseekHarness.ideContext.ephemeral.enabled')) {
+        promptContext.invalidateCapability()
+        if (next.get<boolean>('ideContext.ephemeral.enabled', false)) {
+          void ideServer.start().catch((error) => log.appendLine(`[ide-bridge] start failed: ${String(error)}`))
+        } else {
+          void ideServer.stop()
+        }
+        if (settingsPanel !== null) bridge.refreshSettings(settingsPanel.webview)
+      }
     }),
   )
 }
@@ -93,6 +115,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 export async function deactivate(): Promise<void> {
   settingsPanel?.dispose()
   settingsPanel = null
+  await ideBridge?.stop()
+  ideBridge?.dispose()
+  ideBridge = null
   await adapter?.dispose()
   const coordinator = lease
   const lastWindow = coordinator === null ? true : await coordinator.releaseAndIsLast()

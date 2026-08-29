@@ -22,6 +22,8 @@ import { Bridge } from '../../src/extension/bridge'
 import { DshClient } from '../../src/extension/dsh-client'
 import { DshAdapter } from '../../src/extension/capabilities'
 import { HostManager } from '../../src/extension/host-manager'
+import { IdeContextProvider } from '../../src/extension/ide/context-provider'
+import { IdePromptContext } from '../../src/extension/ide/prompt-context'
 import type { HostFrame, MuxFrame } from '../../src/extension/protocol/events'
 import type { RpcId } from '../../src/extension/protocol/rpc'
 import type { SessionId } from '../../src/extension/protocol/brand'
@@ -124,7 +126,9 @@ export async function startHarness(): Promise<Harness> {
       },
     },
   }
-  const bridge = new Bridge(adapter, hostManager, context as never)
+  const ideProvider = new IdeContextProvider(crypto.randomUUID(), context as never)
+  const promptContext = new IdePromptContext(adapter, ideProvider, (line) => log.appendLine(line))
+  const bridge = new Bridge(adapter, hostManager, context as never, {}, promptContext)
 
   // --- static file server + webview WebSocket bridge (one port) ---
   const mediaDir = path.resolve(process.cwd(), 'media')
@@ -275,6 +279,7 @@ export async function startHarness(): Promise<Harness> {
       wss.close()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await adapter.dispose()
+      ideProvider.dispose()
       await hostManager.dispose()
       await rm(tmpRoot, { recursive: true, force: true })
       await rm(path.dirname(foreignPath), { recursive: true, force: true })

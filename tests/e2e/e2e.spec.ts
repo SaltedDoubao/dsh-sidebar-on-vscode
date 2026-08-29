@@ -343,6 +343,21 @@ test('asking without a selection attaches the active file path', async ({ page, 
   await expect(page.locator('.ctx-row', { hasText: 'ide：当前文件' })).toContainText('context.ts')
 })
 
+test('the active editor may be outside the selected workspace', async ({ page, harness }) => {
+  const editorPath = path.join(harness.foreignPath, 'external.ts')
+  harness.setActiveEditor({
+    document: { getText: () => 'const external = true', uri: { fsPath: editorPath } },
+    selection: { isEmpty: false, start: { line: 0 }, end: { line: 0 } },
+  })
+  await harness.createSession(harness.workspacePath, 'EXTERNAL-EDITOR-SESS')
+  await openApp(page, harness)
+  await selectSessionRow(page, 'EXTERNAL-EDITOR-SESS')
+  await expect(page.locator('.composer-context-chip')).toContainText('external.ts')
+  await page.locator('.composer-input').fill('解释当前选中的外部文件内容')
+  await page.locator('.composer-input').press('Enter')
+  await expect(page.locator('.ctx-row', { hasText: 'ide：选中代码' })).toContainText('external.ts')
+})
+
 test('toggling IDE context injection off stops the injection', async ({ page, harness }) => {
   test.setTimeout(180_000)
   const editorPath = path.join(harness.workspacePath, 'src', 'off.ts')

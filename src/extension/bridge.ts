@@ -18,6 +18,7 @@ import type { SessionSummary } from './protocol/sessions'
 import type { SessionId } from './protocol/brand'
 import type { WorkspaceView } from './protocol/views'
 import { OverlayRetention } from './overlay-retention'
+import type { IdePromptContext } from './ide/prompt-context'
 
 const SELECTED_ROOT_KEY = 'deepseekHarness.selectedWorkspaceUri'
 const recordSchema = z.record(z.string(), z.unknown())
@@ -38,6 +39,7 @@ const inboundSchema = z.union([
   z.object({ type: z.literal('open-file'), path: z.string() }),
   z.object({ type: z.literal('open-external'), href: z.string() }),
   z.object({ type: z.literal('set-ide-context'), enabled: z.boolean() }),
+  z.object({ type: z.literal('set-ide-context-ephemeral'), enabled: z.boolean() }),
   z.object({ type: z.literal('active-session'), sessionId: z.string().nullable() }),
   z.object({ type: z.literal('open-settings') }),
   z.object({ type: z.literal('close-settings') }),
@@ -48,6 +50,7 @@ export type WebviewSurface = 'chat' | 'settings'
 export interface BridgeActions {
   openSettings?: () => void
   closeSettings?: () => void
+  selectedWorkspaceChanged?: () => void
 }
 
 /** Secure, validated message bridge shared by the sidebar and full panel. */
@@ -66,6 +69,7 @@ export class Bridge {
     private readonly host: HostManager,
     private readonly context: vscode.ExtensionContext,
     private readonly actions: BridgeActions = {},
+    private readonly idePrompt?: IdePromptContext,
   ) {
     this.adapter.onMuxEvent((frame) => this.overlays.record(frame))
     this.adapter.onHostEvent((frame) => {
@@ -74,6 +78,7 @@ export class Bridge {
       if (frame.type === 'host/workspace-removed') this.knownWorkspaceIds.delete(frame.workspaceId)
     })
     this.adapter.onRecovered(() => {
+      this.idePrompt?.invalidateCapability()
       for (const webview of this.webviews) {
         if (this.surfaces.get(webview) === 'settings') {
           void this.sendSettingsInit(webview).then(() => this.post(webview, { type: 'settings-refresh' }))
@@ -123,7 +128,7 @@ export class Bridge {
   }
 
   refreshSettings(webview: vscode.Webview): void {
-    this.post(webview, { type: 'settings-refresh' })
+    void this.sendSettingsInit(webview).then(() => this.post(webview, { type: 'settings-refresh' }))
   }
 
   postIdeContent(kind: IdeContentKind, targets: Iterable<vscode.Webview>): void {
@@ -190,6 +195,11 @@ export class Bridge {
           'ideContext.enabled', message.enabled, vscode.ConfigurationTarget.Global,
         )
         break
+      case 'set-ide-context-ephemeral':
+        await vscode.workspace.getConfiguration('deepseekHarness').update(
+          'ideContext.ephemeral.enabled', message.enabled, vscode.ConfigurationTarget.Global,
+        )
+        break
       case 'active-session':
         this.foregroundSessions.set(webview, message.sessionId)
         break
@@ -236,6 +246,7 @@ export class Bridge {
         hostVersion: description.version,
         vscodeLanguage: vscode.env.language,
         capabilities: this.adapter.capabilities(),
+        ideContextEphemeralEnabled: vscode.workspace.getConfiguration('deepseekHarness').get<boolean>('ideContext.ephemeral.enabled', false),
       })
     } catch (error) {
       const detail = errorMessage(error)
@@ -292,7 +303,9 @@ export class Bridge {
   private async handleRpc(webview: vscode.Webview, id: string, method: UiRequest, params: unknown): Promise<void> {
     try {
       const scoped = this.scopeRequest(method, params)
-      const result = await this.adapter.callUi(method, scoped as never)
+      const result = method === 'session.prompt' && this.idePrompt !== undefined
+        ? await this.idePrompt.send(scoped)
+        : await this.adapter.callUi(method, scoped as never)
       if (method === 'workspace.create') {
         const workspaceId = (result as { workspace?: { workspaceId?: unknown } })?.workspace?.workspaceId
         if (typeof workspaceId === 'string') this.knownWorkspaceIds.add(workspaceId)
@@ -358,6 +371,7 @@ export class Bridge {
     const root = this.workspaceRoots().find((entry) => entry.uri === uri)
     if (root === undefined) throw new Error('The selected workspace root is no longer open')
     await this.context.workspaceState.update(SELECTED_ROOT_KEY, uri)
+    this.actions.selectedWorkspaceChanged?.()
     await this.sendInit(webview, 'workspace-changed')
   }
 
@@ -368,11 +382,6 @@ export class Bridge {
     }
     if (editor === undefined) {
       reply({ text: '', error: 'No active editor' })
-      return
-    }
-    const roots = this.workspaceRoots()
-    if (roots.length > 0 && !roots.some((root) => isInside(root.path, editor.document.uri.fsPath))) {
-      reply({ text: '', error: 'The active file is outside the open VS Code workspace' })
       return
     }
     const fromSelection = kind === 'selection' && !editor.selection.isEmpty
@@ -390,8 +399,6 @@ export class Bridge {
     const editor = vscode.window.activeTextEditor
     if (editor === undefined) return null
     const filePath = editor.document.uri.fsPath
-    const roots = this.workspaceRoots()
-    if (roots.length > 0 && !roots.some((root) => isInside(root.path, filePath))) return null
     const selection = editor.selection
     const start = (selection as { start?: { line?: number } }).start?.line
     const endPosition = (selection as { end?: { line?: number; character?: number } }).end

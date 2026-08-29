@@ -12,8 +12,7 @@ import type { HostDescription } from '../../extension/protocol/host'
 import type { PromptContentPart, QueueAction } from '../../extension/protocol/sessions'
 import type { SessionModels } from '../../extension/protocol/sessions'
 import type { PermissionSelectProjection } from '../../extension/protocol/projections'
-import { fetchIdeContent, rpc, setIdeContext } from '../bridge'
-import { formatIdeInsert, hasIdeBlock } from '../ide-insert'
+import { rpc, setIdeContext } from '../bridge'
 import type { Attachment, ModelInfo, QueuedMessage } from '../types'
 import type { AppStore } from './index'
 
@@ -84,38 +83,6 @@ function permissionProjection(value: unknown): PermissionSelectProjection | null
   return { currentValue: candidate.currentValue, options }
 }
 
-/**
- * Send-time IDE context enrichment: when the active editor holds a non-empty
- * selection, the selection is appended as a formatted code block; with no
- * selection the ACTIVE FILE PATH is attached as lightweight context (the
- * model can read the file itself with tools). Skipped when the draft already
- * carries an inserted IDE block. Best-effort — any failure (no editor,
- * timeout) silently leaves the prompt untouched.
- * @param text - the draft text.
- * @returns the prompt text, enriched when editor context is available.
- */
-async function enrichWithIdeContext(text: string, enabled: boolean): Promise<string> {
-  if (!enabled || hasIdeBlock(text)) return text
-  let content
-  try {
-    content = await fetchIdeContent('selection')
-  } catch {
-    return text
-  }
-  if (content.error !== undefined) return text
-  if (content.fromSelection === true && content.text.trim() !== '') {
-    const block = formatIdeInsert('selection', content.text, content.path)
-    return text.trim() === '' ? block : `${text.trim()}\n\n${block}`
-  }
-  // No selection: the payload still carries the active file path (the
-  // 'selection' kind falls back to the whole document); attach only the path.
-  if (content.path !== undefined) {
-    const block = `### 当前文件：${content.path}`
-    return text.trim() === '' ? block : `${text.trim()}\n\n${block}`
-  }
-  return text
-}
-
 export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> = (set, get) => ({
   queue: [],
   models: [],
@@ -131,14 +98,10 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
     if (get().activeSessionId === null) await get().newChat()
     const sessionId = get().activeSessionId
     if (sessionId === null) throw new Error('no active session')
-    // A prompt whose content is exactly one text block starting with `/` is a
-    // slash command the HOST executes (goal/compact/plan...); IDE context must
-    // not be appended or the host rejects it as an unknown command.
-    const prompt = text.startsWith('/')
-      ? text
-      : await enrichWithIdeContext(text, get().ideContextEnabled)
     const content: PromptContentPart[] = [
-      { type: 'text', text: prompt },
+      // Automatic IDE context is captured and attached by the extension host,
+      // next to the session.prompt boundary. The Webview keeps user text pure.
+      { type: 'text', text },
       ...attachments.map((a): PromptContentPart => ({ type: 'image', mediaType: a.mediaType, data: a.data, name: a.name })),
     ]
     await rpc('session.prompt', {

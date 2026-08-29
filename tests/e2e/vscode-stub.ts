@@ -12,9 +12,17 @@
 export interface StubTextEditor {
   document: {
     getText(selection?: unknown): string
-    uri: { fsPath: string }
+    uri: { fsPath: string; scheme?: string; toString?(): string }
+    languageId?: string
+    isDirty?: boolean
+    isUntitled?: boolean
   }
-  selection: { isEmpty: boolean; start?: { line: number }; end?: { line: number } }
+  selection: {
+    isEmpty: boolean
+    start?: { line: number; character?: number }
+    end?: { line: number; character?: number }
+    active?: { line: number; character: number }
+  }
 }
 
 const errorMessages: string[] = []
@@ -97,6 +105,20 @@ export const Uri = {
 /** Test control: point the stub at an editor (or clear it — mirrors the real
  * vscode API, where the active editor is `undefined` when none is open). */
 export function setActiveEditor(editor: StubTextEditor | null): void {
+  if (editor !== null) {
+    editor.document.uri.scheme ??= 'file'
+    editor.document.uri.toString ??= () => `file://${editor.document.uri.fsPath.replaceAll('\\', '/')}`
+    editor.document.languageId ??= 'typescript'
+    editor.document.isDirty ??= false
+    editor.document.isUntitled ??= false
+    editor.selection.start ??= { line: 0, character: 0 }
+    editor.selection.start.character ??= 0
+    editor.selection.end ??= { line: editor.selection.start.line, character: editor.selection.start.character }
+    // Existing bridge metadata treats an end-at-column-zero as excluding that
+    // line; fixtures that omit a column historically mean an inclusive line.
+    editor.selection.end.character ??= 1
+    editor.selection.active ??= { line: editor.selection.end.line, character: editor.selection.end.character }
+  }
   window.activeTextEditor = editor ?? undefined
   for (const listener of activeEditorListeners) listener(window.activeTextEditor)
   if (window.activeTextEditor !== undefined) {
