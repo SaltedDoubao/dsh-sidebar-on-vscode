@@ -500,6 +500,8 @@ function llmProviders(): ConfigurableProviderView[] {
 export const mockSettingsRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
 /** Goal RPC calls captured by durable store tests (no credentials involved). */
 export const mockGoalRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
+/** Workspace/session creation calls captured by navigation regression tests. */
+export const mockSessionRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
 
 // ---------------------------------------------------------------------------
 // Listener plumbing
@@ -675,6 +677,9 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
     mockSettingsRpcLog.push({ method, params: p })
   }
   if (method.startsWith('goal.')) mockGoalRpcLog.push({ method, params: { ...p } })
+  if (method === 'workspace.create' || method === 'session.create') {
+    mockSessionRpcLog.push({ method, params: { ...p } })
+  }
   switch (method) {
     case 'session.list': {
       const items: SessionSummary[] = sessions

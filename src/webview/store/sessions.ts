@@ -51,11 +51,6 @@ function writeViewPrefs(prefs: WorkspaceViewPrefs): void {
   }
 }
 
-function samePath(a: string, b: string): boolean {
-  const normalized = (value: string): string => value.replaceAll('\\', '/').replace(/\/$/, '').toLowerCase()
-  return normalized(a) === normalized(b)
-}
-
 function reorderByIds<T extends { workspaceId: WorkspaceId }>(items: T[], ids: readonly WorkspaceId[]): T[] {
   const byId = new Map(items.map((item) => [item.workspaceId, item]))
   return [...ids.flatMap((id) => byId.get(id) ?? []), ...items.filter((item) => !ids.includes(item.workspaceId))]
@@ -144,17 +139,33 @@ export const createSessionsSlice: StateCreator<AppStore, [], [], SessionsSlice> 
     const activeId = get().activeSessionId
     const active = get().sessions.find((session) => session.sessionId === activeId)
     const activeWorkspace = activeId === null ? undefined : get().workspaces.find((workspace) => workspace.sessionIds.includes(activeId))
-    const matchingRoot = get().workspaces.find((workspace) => samePath(workspace.path, get().cwd))
-    const workspaceId = requestedWorkspaceId ?? activeWorkspace?.workspaceId ?? matchingRoot?.workspaceId ?? get().workspaces[0]?.workspaceId
-    if (active?.blank === true && (workspaceId === undefined || activeWorkspace?.workspaceId === workspaceId)) return
-    if (workspaceId === undefined && get().capabilities?.workspace === true) {
-      await get().addDshWorkspace()
-      return
+    let workspace = requestedWorkspaceId === undefined
+      ? undefined
+      : get().workspaces.find((item) => item.workspaceId === requestedWorkspaceId)
+
+    if (requestedWorkspaceId === undefined && get().capabilities?.workspace === true) {
+      // workspace.create is idempotent: it adopts the selected VS Code root
+      // when absent and returns the existing same-path workspace otherwise.
+      const result = await rpc<{ workspace: WorkspaceView; created: boolean }>('workspace.create', { path: get().cwd })
+      workspace = result.workspace
+      if (!get().workspaces.some((item) => item.workspaceId === workspace?.workspaceId)) {
+        get().initWorkspaces([...get().workspaces, workspace], get().archivedSessionIds)
+      }
     }
+
+    const workspaceId = requestedWorkspaceId ?? workspace?.workspaceId
+    if (active?.blank === true && (workspaceId === undefined || activeWorkspace?.workspaceId === workspaceId)) return
     const payload = workspaceId === undefined ? { cwd: get().cwd } : { workspaceId }
     const { sessionId } = await rpc<{ sessionId: SessionId }>('session.create', payload)
+    if (workspaceId !== undefined) {
+      set({
+        workspaces: get().workspaces.map((item) => item.workspaceId === workspaceId && !item.sessionIds.includes(sessionId)
+          ? { ...item, sessionIds: [sessionId, ...item.sessionIds] }
+          : item),
+      })
+    }
     if (!get().sessions.some((session) => session.sessionId === sessionId)) {
-      set({ sessions: [{ sessionId, title: null, updatedAt: Date.now(), running: false, blank: true, cwd: get().cwd }, ...get().sessions] })
+      set({ sessions: [{ sessionId, title: null, updatedAt: Date.now(), running: false, blank: true, cwd: workspace?.path ?? get().cwd }, ...get().sessions] })
     }
     await get().selectSession(sessionId)
     const pending = get().pendingModelSelection

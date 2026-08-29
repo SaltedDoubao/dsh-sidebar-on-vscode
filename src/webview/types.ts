@@ -237,6 +237,8 @@ export interface ModelInfo {
  */
 export type PermissionMode = 'read-only' | 'workspace-write' | 'full-access'
 
+export type ConversationMode = 'chat' | 'trajectory'
+
 /** Per-turn token accounting, accumulated from `assistant/message` usage. */
 export interface TurnStats {
   inputTokens: number

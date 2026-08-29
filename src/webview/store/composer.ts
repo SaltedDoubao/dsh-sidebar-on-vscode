@@ -42,6 +42,7 @@ export interface ComposerSlice {
   cancel: () => Promise<void>
   /** Change the model route; without a session the choice is stashed as pending. */
   selectModel: (provider: string, model: string, reasoningEffort?: string) => Promise<void>
+  /** Change the active session, or the next-session default when none is selected. */
   setPermissionPreset: (preset: string) => Promise<void>
   /** Toggle send-time IDE context injection (persisted as a VS Code setting). */
   setIdeContextEnabled: (enabled: boolean) => void
@@ -175,7 +176,29 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
 
   setPermissionPreset: async (preset) => {
     const sessionId = get().activeSessionId
-    if (sessionId === null || get().permissions === null || get().permissionSwitchingTo !== null) return
+    if (get().permissionSwitchingTo !== null) return
+    if (sessionId === null) {
+      const mode = preset === 'danger-full-access' || preset === 'full-access'
+        ? 'full-access'
+        : preset === 'read-only' || preset === 'workspace-write'
+          ? preset
+          : null
+      if (mode === null) return
+      set({ permissionSwitchingTo: preset, permissionError: null })
+      try {
+        // permission.defaultPreset is resolved by the host during session.create.
+        await get().setUiPref('permissionMode', mode)
+        set({ permissionSwitchingTo: null })
+      } catch (error) {
+        set({
+          permissionSwitchingTo: null,
+          permissionError: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+      return
+    }
+    if (get().permissions === null) return
     set({ permissionSwitchingTo: preset, permissionError: null })
     try {
       const result = await rpc<{ accepted: true; command?: { kind: 'success'; text?: string } }>('session.prompt', {
