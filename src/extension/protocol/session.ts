@@ -9,6 +9,7 @@
 
 import type {
   AssistantMessage,
+  ContentBlock,
   LlmCallConfig,
   LlmCallConfigAdapterDefaults,
   LlmFailure,
@@ -18,7 +19,7 @@ import type {
   ToolSchema,
   UserMessage,
 } from './llm'
-import type { CallId, JsonValue, SessionId } from './brand'
+import type { CallId, CommandId, JsonValue, SessionId } from './brand'
 
 /** Why a turn ended (flattened from the upstream TurnEndReasonMap). */
 export type TurnEndReason =
@@ -116,6 +117,28 @@ export interface SessionEventMap {
   'request/context': RequestContext
   /** Marks the end of a constructor seed (log-only, empty payload). */
   'session/end-seed': Record<string, never>
+  /** A slash command entered its registered handler (log-only). */
+  'command/run': { commandId: CommandId; name: string; args?: string; source: { kind: 'user' } }
+  /** Settlement paired with command/run by commandId (log-only). */
+  'command/done': {
+    commandId: CommandId
+    kind: 'success' | 'error'
+    text?: string
+    sourceEventSeq?: number
+  }
+  /** Manual/automatic compaction lifecycle used by the command presentation. */
+  'compaction/start': { compactionId: string; sourceCommandId?: CommandId; turn: number | null }
+  'compaction/summary': {
+    compactionId: string
+    sourceCommandId?: CommandId
+    summary: ContentBlock[]
+    shadowedRange: { start: number; end: number }
+    shadowedSeqs: number[]
+    shadowedTokenCount: number
+    provider: string
+    model: string
+  }
+  'compaction/end': { compactionId: string; sourceCommandId?: CommandId; turn: number | null; error?: string }
   /** Durable workflow run lifecycle (official workflow-run UI extension). */
   'tool-workflow/run-start': { runId: string; name: string }
   'tool-workflow/agent-start': { runId: string; seq: number; label: string; phase?: string; childId: SessionId }

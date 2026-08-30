@@ -155,7 +155,9 @@ export class DshClient implements DshTransport {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+      // Command handlers may legitimately exceed the transport health
+      // timeout. Their durable lifecycle remains visible on the mux stream.
+      ...(method === 'commands/execute' ? {} : { signal: AbortSignal.timeout(RPC_TIMEOUT_MS) }),
     })
     if (!response.ok) throw new Error(`transport failure for ${method}: HTTP ${response.status}`)
     const parsed = serverResponseSchema.safeParse(await response.json())

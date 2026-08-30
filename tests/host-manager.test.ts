@@ -40,6 +40,7 @@ test('probe returns false on a closed port and true on a dsh host', async () => 
   const manager = new HostManager(silentLog)
   try {
     assert.equal(await manager.probe(fake.port), true)
+    assert.equal(await manager.probeCommandPlane(fake.port), true)
     assert.equal(await manager.probe(1), false)
   } finally {
     await fake.close()
@@ -79,10 +80,11 @@ test('ensureHost skips an occupied non-dsh port and uses the next live host (端
 })
 
 /** startFakeHost bound to an explicit port (rollover fixture). */
-async function startFakeHostOn(port: number) {
+async function startFakeHostOn(port: number, commandPlane = true, version = '0.1.0-rc.6') {
   const { createServer: create } = await import('node:http')
   const server = create((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/api/host.describe') {
+    const commands = req.url === '/api/commands/list' && commandPlane
+    if (req.method !== 'POST' || (req.url !== '/api/host.describe' && !commands)) {
       res.writeHead(404).end()
       return
     }
@@ -93,7 +95,9 @@ async function startFakeHostOn(port: number) {
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
         type: 'server-response',
         rpcId: body.rpcId,
-        result: { ok: true, value: { version: '0.1.0-rc.6', cwd: '/tmp', attachedSessions: 0, canOpenPath: false } },
+        result: { ok: true, value: commands
+          ? []
+          : { version, cwd: '/tmp', attachedSessions: 0, canOpenPath: false } },
       }))
     })
   })
@@ -101,7 +105,39 @@ async function startFakeHostOn(port: number) {
   return { server, port, close: () => new Promise<void>((resolve) => server.close(() => resolve())) }
 }
 
-test('version is diagnostic only when the core host.describe structure is valid', async () => {
+test('ensureHost skips an old dsh-shaped Host without commands/list', async () => {
+  const [base] = await consecutivePorts()
+  const old = await startFakeHostOn(base, false, '0.0.1')
+  const current = await startFakeHostOn(base + 1, true, '9.9.9')
+  const manager = new HostManager(silentLog)
+  manager.basePort = base
+  try {
+    const info = await manager.ensureHost()
+    assert.equal(info.port, base + 1)
+    assert.equal(info.version, '9.9.9')
+  } finally {
+    await old.close()
+    await current.close()
+  }
+})
+
+test('auto-start disabled reports rejected old Host and the update command', async () => {
+  const [base] = await consecutivePorts()
+  const old = await startFakeHostOn(base, false, '0.0.1')
+  const manager = new HostManager(silentLog, { autoStart: false })
+  manager.basePort = base
+  try {
+    await assert.rejects(manager.ensureHost(), (error: unknown) => {
+      assert.match(String(error), /0\.0\.1.+missing commands\/list/u)
+      assert.match(String(error), /npm install -g @deepseek-ai\/dsh/u)
+      return true
+    })
+  } finally {
+    await old.close()
+  }
+})
+
+test('version is diagnostic only when the required command plane is available', async () => {
   const manager = new HostManager(silentLog)
   for (const version of ['0.1.0-rc.6', '0.0.1']) {
     const good = await startFakeHost({ version })
@@ -116,6 +152,12 @@ test('version is diagnostic only when the core host.describe structure is valid'
     assert.equal(await manager.checkVersion({ port: future.port, spawnedByUs: false }), null)
   } finally {
     await future.close()
+  }
+  const old = await startFakeHost({ version: '0.0.1', missingMethods: ['commands/list'] })
+  try {
+    assert.match(await manager.checkVersion({ port: old.port, spawnedByUs: false }) ?? '', /commands\/list/u)
+  } finally {
+    await old.close()
   }
 })
 

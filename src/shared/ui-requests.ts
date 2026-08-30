@@ -31,6 +31,8 @@ export interface UiRequestMap extends Pick<RpcMethodMap,
   | 'workspace.insertSessionBefore'
   | 'workspace.archiveSession'
   | 'skill.list'
+  | 'commands/list'
+  | 'commands/execute'
   | 'goal.create'
   | 'goal.edit'
   | 'goal.pause'
@@ -75,6 +77,7 @@ export const UI_REQUESTS = [
   'host.describe',
   'workspace.create', 'workspace.rename', 'workspace.delete', 'workspace.insertBefore',
   'workspace.insertSessionBefore', 'workspace.archiveSession', 'skill.list',
+  'commands/list', 'commands/execute',
   'goal.create', 'goal.edit', 'goal.pause', 'goal.resume', 'goal.complete', 'goal.clear',
   'settings.describe', 'settings.openDocument', 'settings.update', 'settings.replace', 'settings.mutate',
   'credentials.describe', 'credentials.set', 'credentials.unset',

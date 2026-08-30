@@ -42,5 +42,8 @@ export type JobId = Branded<'JobId'>
 /** Opaque attachment storage identifier. */
 export type AttachmentId = Branded<'AttachmentId'>
 
+/** Correlates one durable command/run + command/done lifecycle pair. */
+export type CommandId = Branded<'CommandId'>
+
 /** Lossless-JSON value bound: everything on the wire conforms to this. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }

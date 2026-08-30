@@ -13,6 +13,7 @@ import type { SessionRpc } from './sessions'
 import type { HostRpc } from './host'
 import type { SettingsRpc, CredentialsRpc, LlmRpc } from './settings'
 import type { SubagentsRpc } from './subagents'
+import type { CommandsRpc } from './commands'
 import type { GoalRef, SkillEntry, WorkspaceView } from './views'
 import type { GoalId, SessionId, WorkspaceId } from './brand'
 
@@ -65,7 +66,8 @@ export interface RpcMethodMap extends
   SettingsRpc,
   CredentialsRpc,
   LlmRpc,
-  SubagentsRpc {}
+  SubagentsRpc,
+  CommandsRpc {}
 
 /** Any registered RPC method name. */
 export type RpcMethod = keyof RpcMethodMap

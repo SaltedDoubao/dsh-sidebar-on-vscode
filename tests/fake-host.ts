@@ -105,7 +105,9 @@ export async function startFakeHost(options: FakeHostOptions = {}): Promise<Fake
                 version: options.version ?? '0.1.0-rc.6', cwd: '/tmp', attachedSessions: 0,
                 canOpenPath: false, ...options.hostDescriptionExtra,
               }
-            : { items: [] }),
+            : method === 'commands/list'
+              ? []
+              : { items: [] }),
         }
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
         type: 'server-response',

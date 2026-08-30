@@ -23,7 +23,7 @@ if (args.includes('--never-ready')) {
   const host = hostIndex >= 0 ? args[hostIndex + 1] : '127.0.0.1'
   const port = Number(portIndex >= 0 ? args[portIndex + 1] : 0)
   const server = createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/api/host.describe') {
+    if (req.method !== 'POST' || (req.url !== '/api/host.describe' && req.url !== '/api/commands/list')) {
       res.writeHead(404).end()
       return
     }
@@ -36,7 +36,9 @@ if (args.includes('--never-ready')) {
         rpcId: request.rpcId,
         result: {
           ok: true,
-          value: { version: 'fixture', cwd: process.cwd(), attachedSessions: 0, canOpenPath: false },
+          value: req.url === '/api/commands/list'
+            ? []
+            : { version: 'fixture', cwd: process.cwd(), attachedSessions: 0, canOpenPath: false },
         },
       }))
     })

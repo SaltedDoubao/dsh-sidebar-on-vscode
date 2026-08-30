@@ -26,6 +26,8 @@ export interface HostManagerOptions {
 }
 
 const PROBE_METHOD = 'host.describe'
+const COMMAND_PROBE_METHOD = 'commands/list'
+const COMMAND_PROBE_AGENT = '__dsh_sidebar_compatibility_probe__'
 const PORT_SCAN_LIMIT = 10
 const PROBE_TIMEOUT_MS = 1500
 const SPAWN_READY_TIMEOUT_MS = 600_000
@@ -58,6 +60,18 @@ const responseSchema = z.object({
   ]),
 }).passthrough()
 
+const commandProbeResponseSchema = z.object({
+  type: z.literal('server-response'),
+  rpcId: z.string(),
+  result: z.union([
+    z.object({ ok: z.literal(true), value: z.unknown().optional() }).passthrough(),
+    z.object({
+      ok: z.literal(false),
+      error: z.object({ code: z.string(), message: z.string() }).passthrough(),
+    }).passthrough(),
+  ]),
+}).passthrough()
+
 type Logger = Pick<vscode.OutputChannel, 'appendLine'>
 
 /** Discovers and owns only Host processes spawned by this manager instance. */
@@ -82,21 +96,59 @@ export class HostManager {
   }
 
   async ensureHost(): Promise<HostInfo> {
+    const rejected: string[] = []
     for (let port = this.basePort; port < this.basePort + PORT_SCAN_LIMIT; port += 1) {
       const description = await this.probeDescription(port)
       if (description !== null) {
-        this.log(`[host-manager] compatible loopback Host found on 127.0.0.1:${port} (version ${description.version})`)
-        return { port, spawnedByUs: false, version: description.version }
+        if (await this.probeCommandPlane(port)) {
+          this.log(`[host-manager] compatible loopback Host found on 127.0.0.1:${port} (version ${description.version})`)
+          return { port, spawnedByUs: false, version: description.version }
+        }
+        const detail = `127.0.0.1:${String(port)} (version ${description.version}, missing ${COMMAND_PROBE_METHOD})`
+        rejected.push(detail)
+        this.log(`[host-manager] skipping incompatible Host at ${detail}`)
       }
     }
-    if (!this.autoStart) throw new Error('No compatible loopback DeepSeek Harness Host was found and auto-start is disabled')
+    if (!this.autoStart) {
+      const detail = rejected.length === 0 ? '' : ` Rejected: ${rejected.join(', ')}.`
+      throw new Error(`No compatible loopback DeepSeek Harness Host was found and auto-start is disabled.${detail} Update the dsh CLI (${DSH_INSTALL_COMMAND}) or enable auto-start.`)
+    }
     const port = await this.firstFreePort()
     this.log(`[host-manager] no compatible Host found; starting one on 127.0.0.1:${port}`)
     return this.spawn(port)
   }
 
   async probe(port: number): Promise<boolean> {
+    // Identity-only by design: process ownership checks must still recognize
+    // an older extension-owned Host so it can be stopped safely.
     return (await this.probeDescription(port)) !== null
+  }
+
+  /** Non-mutating command-plane capability check used for connection admission. */
+  async probeCommandPlane(port: number): Promise<boolean> {
+    try {
+      const rpcId = crypto.randomUUID()
+      const response = await fetch(`http://127.0.0.1:${port}/api/${COMMAND_PROBE_METHOD}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'client-request',
+          rpcId,
+          method: COMMAND_PROBE_METHOD,
+          payload: { args: { agentId: COMMAND_PROBE_AGENT } },
+        }),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      })
+      if (!response.ok) return false
+      const parsed = commandProbeResponseSchema.safeParse(await response.json())
+      if (!parsed.success || parsed.data.rpcId !== rpcId) return false
+      // A real current Host resolves the route, then rejects the inert agent
+      // at the outer gateway boundary with session-not-found. Unknown routes
+      // use a different transport/business failure and remain incompatible.
+      return parsed.data.result.ok || parsed.data.result.error.code === 'session-not-found'
+    } catch {
+      return false
+    }
   }
 
   async probeDescription(port: number): Promise<z.infer<typeof hostDescriptionSchema> | null> {
@@ -151,6 +203,7 @@ export class HostManager {
 
     const readyTimeout = this.options.spawnReadyTimeoutMs ?? SPAWN_READY_TIMEOUT_MS
     const deadline = Date.now() + readyTimeout
+    let incompatibleVersion: string | null = null
     while (Date.now() < deadline) {
       if (spawnState.error !== null) {
         if (this.child === child) this.child = null
@@ -161,25 +214,30 @@ export class HostManager {
         throw new Error(`DeepSeek Harness Host exited during startup (code ${String(child.exitCode)})${detail === '' ? '' : `: ${detail}`}`)
       }
       const description = await this.probeDescription(port)
-      if (description !== null) {
+      if (description !== null && await this.probeCommandPlane(port)) {
         const info: HostInfo = { port, pid: child.pid, spawnedByUs: true, version: description.version }
         this.ownedInfo = info
         await this.options.onOwnedHost?.(info)
         return info
       }
+      if (description !== null) incompatibleVersion = description.version
       await new Promise((resolve) => setTimeout(resolve, SPAWN_POLL_MS))
     }
     if (this.child === child) {
       await terminateChild(child)
       if (this.child === child) this.child = null
     }
+    if (incompatibleVersion !== null) {
+      throw new Error(`DeepSeek Harness Host ${incompatibleVersion} started on port ${String(port)} but does not expose required ${COMMAND_PROBE_METHOD}; update the dsh CLI (${DSH_INSTALL_COMMAND})`)
+    }
     throw new Error(`DeepSeek Harness Host did not become ready on port ${String(port)} within ${String(readyTimeout)}ms`)
   }
 
-  /** Version is diagnostic only. Structural probes decide compatibility. */
+  /** Version is diagnostic only; required protocol capabilities decide compatibility. */
   async checkVersion(info: HostInfo): Promise<string | null> {
     const description = await this.probeDescription(info.port)
-    return description === null ? 'host.describe did not return the required core structure' : null
+    if (description === null) return 'host.describe did not return the required core structure'
+    return await this.probeCommandPlane(info.port) ? null : `${COMMAND_PROBE_METHOD} is unavailable; update the dsh CLI (${DSH_INSTALL_COMMAND})`
   }
 
   async stopOwned(): Promise<void> {
