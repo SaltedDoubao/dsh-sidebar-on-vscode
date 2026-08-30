@@ -88,7 +88,9 @@ export const useAppStore = create<AppStore>()((...a) => {
           get().applyQueueFrame(mux)
           get().applyProjectionFrame(mux)
         } else {
-          get().applyHostFrame(frame as HostFrame)
+          const host = frame as HostFrame
+          get().applyHostFrame(host)
+          get().applyCatalogHostFrame(host)
         }
       })
       onHostStatus((status) => {

@@ -10,7 +10,7 @@
  * Selection: bridge.ts picks this module for `?mock` / VITE_DSH_MOCK=1.
  */
 
-import type { ApprovalRequestId, CallId, GoalId, JobId, MessageId, SessionId, WorkspaceId } from '../../extension/protocol/brand'
+import type { ApprovalRequestId, CallId, CommandId, GoalId, JobId, MessageId, SessionId, WorkspaceId } from '../../extension/protocol/brand'
 import type {
   AskUserQuestionAnswerItem,
   AskUserQuestionItem,
@@ -502,6 +502,10 @@ export const mockSettingsRpcLog: Array<{ method: string; params: Record<string, 
 export const mockGoalRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
 /** Workspace/session creation calls captured by navigation regression tests. */
 export const mockSessionRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
+/** Command-plane calls, used by routing regression tests. */
+export const mockCommandRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
+/** Prompt calls kept separate so tests can prove commands never reach the model path. */
+export const mockPromptRpcLog: Array<{ method: string; params: Record<string, unknown> }> = []
 
 // ---------------------------------------------------------------------------
 // Listener plumbing
@@ -680,6 +684,10 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
   if (method === 'workspace.create' || method === 'session.create') {
     mockSessionRpcLog.push({ method, params: { ...p } })
   }
+  if (method === 'commands/list' || method === 'commands/execute') {
+    mockCommandRpcLog.push({ method, params: { ...p } })
+  }
+  if (method === 'session.prompt') mockPromptRpcLog.push({ method, params: { ...p } })
   switch (method) {
     case 'session.list': {
       const items: SessionSummary[] = sessions
@@ -802,6 +810,67 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
       emit('host', { type: 'host/session-added', sessionId, blank: false, parentSessionId: parent?.sessionId, cwd: MOCK_CWD })
       return respond({ sessionId })
     }
+    case 'commands/list':
+      return respond([
+          { name: 'goal', description: '设置或查看长期任务目标', input: { hint: '<目标>|clear|edit|pause|resume' } },
+          { name: 'compact', description: '压缩较早的对话历史' },
+          { name: 'plan', description: '进入或退出计划模式', input: { hint: 'off|消息' } },
+          { name: 'permission', description: '切换当前会话权限', input: { hint: '<preset>' } },
+      ])
+    case 'commands/execute': {
+      const args = (p['args'] ?? {}) as Record<string, unknown>
+      const sessionId = args['agentId'] as SessionId
+      const line = String(args['line'] ?? '')
+      const parsed = /^\/([a-z0-9][\w-]*)(?=\s|$)/iu.exec(line)
+      const name = parsed?.[1]?.toLowerCase()
+      if (name === undefined || !['goal', 'compact', 'plan', 'permission'].includes(name)) {
+        return respond(undefined)
+      }
+      const commandId = `command-${++seq}` as CommandId
+      const rawArgs = line.slice(name.length + 1)
+      emit('mux', {
+        type: 'session/event',
+        sessionId,
+        event: ev('command/run', {
+          commandId,
+          name,
+          ...(rawArgs === '' ? {} : { args: rawArgs }),
+          source: { kind: 'user' },
+        }),
+      })
+      let result: { kind: 'success'; text?: string; sourceEventSeq?: number } | { kind: 'error'; text: string }
+      if (name === 'permission') {
+        const preset = rawArgs.trim()
+        if (!DEMO_PROJECTIONS.permissions.options.some((option) => option.value === preset)) {
+          result = { kind: 'error', text: `unknown permission preset: ${preset}` }
+        } else {
+          DEMO_PROJECTIONS.permissions = { ...DEMO_PROJECTIONS.permissions, currentValue: preset }
+          emit('mux', { type: 'session/projection', sessionId, key: 'permissions', value: DEMO_PROJECTIONS.permissions, seq }, 10)
+          result = { kind: 'success', text: `Permission preset changed to ${preset}` }
+        }
+      } else if (name === 'compact') {
+        const summary = ev('compaction/summary', {
+          compactionId: `compact-${seq}`,
+          sourceCommandId: commandId,
+          summary: [{ type: 'text', text: '较早的历史已压缩。' }],
+          shadowedRange: { start: 1, end: 1 },
+          shadowedSeqs: [],
+          shadowedTokenCount: 100,
+          provider: 'deepseek',
+          model: 'deepseek-chat',
+        })
+        emit('mux', { type: 'session/event', sessionId, event: summary }, 10)
+        result = { kind: 'success', text: 'Compacted', sourceEventSeq: summary.seq }
+      } else {
+        result = { kind: 'success', text: `${name} updated` }
+      }
+      emit('mux', {
+        type: 'session/event',
+        sessionId,
+        event: ev('command/done', { commandId, ...result }),
+      }, 20)
+      return respond({ commandId, result })
+    }
     case 'session.prompt': {
       const sessionId = p['sessionId'] as SessionId
       const content = p['content'] as Array<{ type: string; text?: string; name?: string }>
@@ -828,13 +897,6 @@ function rpc<T = unknown>(method: UiRequest, params?: unknown): Promise<T> {
         return respond({ accepted: true })
       }
       const text = content.find((c) => c.type === 'text')?.text ?? ''
-      if (text.startsWith('/permission ')) {
-        const preset = text.slice('/permission '.length).trim()
-        if (!DEMO_PROJECTIONS.permissions.options.some((option) => option.value === preset)) return respond({ accepted: true })
-        DEMO_PROJECTIONS.permissions = { ...DEMO_PROJECTIONS.permissions, currentValue: preset }
-        emit('mux', { type: 'session/projection', sessionId, key: 'permissions', value: DEMO_PROJECTIONS.permissions, seq }, 20)
-        return respond({ accepted: true, command: { kind: 'success', text: preset } })
-      }
       if (sessionId === DEMO_SESSION_ID) runDemoStream(sessionId, text)
       else emit('mux', { type: 'session/event', sessionId, event: ev('turn/start', { turn: 1 }) }, 100)
       return respond({ accepted: true })

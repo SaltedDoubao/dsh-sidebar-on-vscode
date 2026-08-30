@@ -192,9 +192,9 @@ test('permission switches wait for the host projection and retain errors', async
   assert.equal(useAppStore.getState().permissionSwitchingTo, null)
 
   useAppStore.setState({ permissions: { currentValue: 'read-only', options: [{ value: 'unknown-preset', name: 'Unknown' }] } })
-  await assert.rejects(useAppStore.getState().setPermissionPreset('unknown-preset'), /未识别权限命令|did not recognize/)
+  await assert.rejects(useAppStore.getState().setPermissionPreset('unknown-preset'), /unknown permission preset/u)
   assert.equal(useAppStore.getState().permissionSwitchingTo, null)
-  assert.match(useAppStore.getState().permissionError ?? '', /未识别权限命令|did not recognize/)
+  assert.match(useAppStore.getState().permissionError ?? '', /unknown permission preset/u)
 })
 
 test('permission selector uses and updates the next-session default without a history session', async () => {

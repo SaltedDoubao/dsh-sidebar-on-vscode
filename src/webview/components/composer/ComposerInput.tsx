@@ -215,22 +215,20 @@ export function ComposerInput({
   const composingRef = useRef(false)
   const [suggestion, setSuggestion] = useState<SuggestionState | null>(null)
   const [highlight, setHighlight] = useState(0)
-  const [skills, setSkills] = useState<SkillEntry[]>([])
   const [references, setReferences] = useState<SuggestItem[]>([])
-  const skillsLoadedFor = useRef<SessionId | null>(null)
+  const commandCatalog = useAppStore((state) => state.commands)
+  const skillCatalog = useAppStore((state) => state.skills)
+  const catalogSessionId = useAppStore((state) => state.catalogSessionId)
+  const loadComposerCatalog = useAppStore((state) => state.loadComposerCatalog)
   const referencesSupported = useAppStore((state) => state.capabilities?.references !== false)
   const { t } = useI18n()
 
-  // Lazy skill catalog load, once per session.
+  // The Host directory is session-scoped because agent presets may contribute
+  // different commands and skills. The store also refreshes it on Host events.
   useEffect(() => {
-    if (sessionId === null || skillsLoadedFor.current === sessionId) return
-    skillsLoadedFor.current = sessionId
-    let stale = false
-    void rpc<{ skills: SkillEntry[] }>('skill.list', { sessionId })
-      .then((res) => { if (!stale) setSkills(res.skills) })
-      .catch(() => { skillsLoadedFor.current = null })
-    return () => { stale = true }
-  }, [sessionId])
+    if (sessionId === null || catalogSessionId === sessionId) return
+    void loadComposerCatalog(sessionId).catch(() => undefined)
+  }, [catalogSessionId, loadComposerCatalog, sessionId])
 
   // Reference discovery is Host-authoritative. Both namespaces are queried in
   // parallel and failures degrade to an empty popup without affecting chat.
@@ -283,23 +281,32 @@ export function ComposerInput({
     if (suggestion.kind === 'mention') {
       return references
     }
-    const commands = filterCommands(BUILTIN_COMMANDS, suggestion.query).map((c) => ({
+    const availableCommands: readonly SlashCommand[] = catalogSessionId === sessionId
+      ? commandCatalog.map((command) => ({
+          name: command.name,
+          description: command.description,
+          hint: command.input?.hint,
+        }))
+      : BUILTIN_COMMANDS
+    const commands = filterCommands(availableCommands, suggestion.query).map((c) => ({
       kind: 'command' as const,
       key: c.name,
       label: c.name,
       description: (() => {
-        const description = c.name === 'goal' ? t('Set or view a long-running goal') : c.name === 'compact' ? t('Compact older conversation history') : t('Enter or leave plan mode')
+        const description = catalogSessionId === sessionId
+          ? c.description
+          : c.name === 'goal' ? t('Set or view a long-running goal') : c.name === 'compact' ? t('Compact older conversation history') : t('Enter or leave plan mode')
         return c.hint === undefined ? description : `${description} · ${c.hint}`
       })(),
     }))
-    const skillItems = filterSkills(skills, suggestion.query).map((s) => ({
+    const skillItems = filterSkills(catalogSessionId === sessionId ? skillCatalog : [], suggestion.query).map((s) => ({
       kind: 'skill' as const,
       key: s.name,
       label: s.name,
       description: s.description,
     }))
     return [...commands, ...skillItems].slice(0, 8)
-  }, [references, suggestion, skills, t])
+  }, [catalogSessionId, commandCatalog, references, sessionId, skillCatalog, suggestion, t])
   const popupOpen = suggestion !== null && items.length > 0
 
   // Auto-grow: shrink to the content height, capped at MAX_ROWS of line-height.

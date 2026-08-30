@@ -150,6 +150,8 @@ export const ZH_MESSAGES = {
   'Select an option or enter a custom answer.': '请选择一个选项或填写自定义答案。',
   'New file': '新文件',
   'Running…': '运行中…',
+  'Command': '命令',
+  'Command failed': '命令失败',
   '{start}–{end} / {total} lines': '{start}–{end} / {total} 行',
   '{count} total{truncated}': '共 {count} 条{truncated}',
   ' (truncated)': '（已截断）',

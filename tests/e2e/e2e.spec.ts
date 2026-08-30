@@ -124,6 +124,8 @@ test('mock dsh projections drive the permission picker and context detail popove
   await confirmation.locator('input[type=checkbox]').check()
   await confirmation.locator('.composer-btn-danger').click()
   await expect(permission).toContainText('完全访问')
+  await expect(page.locator('.command-card[data-command="permission"]')).toHaveCount(0)
+  await expect(page.locator('.msg-user', { hasText: '/permission' })).toHaveCount(0)
 
   const meter = page.locator('.context-meter-trigger')
   await expect(meter).toHaveAttribute('title', '上下文已用: 45%')

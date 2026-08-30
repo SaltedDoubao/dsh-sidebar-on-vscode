@@ -7,11 +7,17 @@
 
 import type { StateCreator } from 'zustand'
 import type { MessageId, SessionId } from '../../extension/protocol/brand'
-import type { MuxFrame } from '../../extension/protocol/events'
+import type { HostFrame, MuxFrame } from '../../extension/protocol/events'
 import type { HostDescription } from '../../extension/protocol/host'
+import type {
+  CommandDescriptor,
+  CommandExecution,
+  EncodedImageAttachment,
+} from '../../extension/protocol/commands'
 import type { PromptContentPart, QueueAction } from '../../extension/protocol/sessions'
 import type { SessionModels } from '../../extension/protocol/sessions'
 import type { PermissionSelectProjection } from '../../extension/protocol/projections'
+import type { SkillEntry } from '../../extension/protocol/views'
 import { rpc, setIdeContext } from '../bridge'
 import type { Attachment, ModelInfo, QueuedMessage } from '../types'
 import type { AppStore } from './index'
@@ -26,6 +32,11 @@ export interface ComposerSlice {
   selectedModel: SessionModels['current'] | null
   /** Model chosen before any session exists; applied on the next session create. */
   pendingModelSelection: { provider: string; model: string; reasoningEffort?: string } | null
+  /** Host-authoritative slash-command directory for catalogSessionId. */
+  commands: readonly CommandDescriptor[]
+  /** Host-authoritative skill directory; skills still invoke through session.prompt. */
+  skills: readonly SkillEntry[]
+  catalogSessionId: SessionId | null
   /** Host-computed permissions of the materialized active session. */
   permissions: PermissionSelectProjection | null
   /** Preset awaiting the host's authoritative projection update. */
@@ -37,6 +48,10 @@ export interface ComposerSlice {
 
   /** Send a prompt; without an active session one is created first (Codex-style). */
   sendPrompt: (text: string, attachments: Attachment[]) => Promise<void>
+  /** Refresh command + skill catalogs for a materialized session. */
+  loadComposerCatalog: (sessionId: SessionId) => Promise<void>
+  /** Invalidate command/skill catalogs on Host registry/preset events. */
+  applyCatalogHostFrame: (frame: HostFrame) => void
   /** Interrupt the current turn of the active session. */
   cancel: () => Promise<void>
   /** Change the model route; without a session the choice is stashed as pending. */
@@ -83,11 +98,48 @@ function permissionProjection(value: unknown): PermissionSelectProjection | null
   return { currentValue: candidate.currentValue, options }
 }
 
+const PERMISSION_CONFIRM_TIMEOUT_MS = 10_000
+let permissionConfirmTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearPermissionConfirmTimer(): void {
+  if (permissionConfirmTimer !== null) clearTimeout(permissionConfirmTimer)
+  permissionConfirmTimer = null
+}
+
+/** Parse only a leading slash token; unknown/malformed tokens never reach the model. */
+export function leadingSlashName(text: string): string | null {
+  if (!text.startsWith('/')) return null
+  return /^\/([a-z0-9][\w-]*)(?=\s|$)/iu.exec(text)?.[1]?.toLowerCase() ?? ''
+}
+
+function encodedImages(attachments: readonly Attachment[]): EncodedImageAttachment[] {
+  return attachments.map((attachment) => ({
+    mediaType: attachment.mediaType,
+    data: attachment.data,
+    name: attachment.name,
+  }))
+}
+
+async function executeCommandLine(
+  sessionId: SessionId,
+  line: string,
+  attachments: readonly Attachment[] = [],
+): Promise<CommandExecution> {
+  const execution = await rpc<CommandExecution | undefined>('commands/execute', {
+    args: { agentId: sessionId, line, images: encodedImages(attachments) },
+  })
+  if (execution === undefined) throw new Error(`unknown or malformed command: ${line}`)
+  return execution
+}
+
 export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> = (set, get) => ({
   queue: [],
   models: [],
   selectedModel: null,
   pendingModelSelection: null,
+  commands: [],
+  skills: [],
+  catalogSessionId: null,
   permissions: null,
   permissionSwitchingTo: null,
   permissionError: null,
@@ -98,6 +150,29 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
     if (get().activeSessionId === null) await get().newChat()
     const sessionId = get().activeSessionId
     if (sessionId === null) throw new Error('no active session')
+    const slashName = leadingSlashName(text)
+    if (slashName !== null) {
+      if (get().catalogSessionId !== sessionId) await get().loadComposerCatalog(sessionId)
+      const command = get().commands.find((entry) => entry.name.toLowerCase() === slashName)
+      if (command !== undefined) {
+        if (attachments.length > 0 && command.input?.images !== true) {
+          throw new Error(`/${command.name} does not accept image attachments; remove them first`)
+        }
+        const execution = await executeCommandLine(sessionId, text, attachments)
+        // Match dsh WebUI admission semantics: an admitted command is cleared
+        // and its handler outcome renders durably. Attachment errors retain the
+        // images so the user can correct the submission.
+        if (attachments.length > 0 && execution.result.kind === 'error') {
+          throw new Error(execution.result.text)
+        }
+        get().touchSession(sessionId, Date.now())
+        return
+      }
+      const skill = get().skills.find((entry) => entry.name.toLowerCase() === slashName)
+      if (skill === undefined) throw new Error(`unknown or malformed command: ${text}`)
+      // Skills intentionally continue through session.prompt; dsh-tool-skill
+      // recognizes the whitespace-bounded /name token at the pre-step seam.
+    }
     const content: PromptContentPart[] = [
       // Automatic IDE context is captured and attached by the extension host,
       // next to the session.prompt boundary. The Webview keeps user text pure.
@@ -113,6 +188,25 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
     // Sending a prompt makes its session the most recent one: bump and re-sort
     // immediately (the user/message event confirms with the host time later).
     get().touchSession(sessionId, Date.now())
+  },
+
+  loadComposerCatalog: async (sessionId) => {
+    const [commands, skillCatalog] = await Promise.all([
+      rpc<readonly CommandDescriptor[]>('commands/list', { args: { agentId: sessionId } }),
+      rpc<{ skills: readonly SkillEntry[] }>('skill.list', { sessionId }),
+    ])
+    if (get().activeSessionId === sessionId) {
+      set({ commands, skills: skillCatalog.skills, catalogSessionId: sessionId })
+    }
+  },
+
+  applyCatalogHostFrame: (frame) => {
+    if (frame.type !== 'host/remote-event') return
+    if (frame.event !== 'commands/change' && frame.event !== 'agent-preset/selected') return
+    const sessionId = get().activeSessionId
+    if (sessionId === null) return
+    set({ commands: [], skills: [], catalogSessionId: null })
+    void get().loadComposerCatalog(sessionId).catch(() => undefined)
   },
 
   cancel: async () => {
@@ -164,16 +258,47 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
     if (get().permissions === null) return
     set({ permissionSwitchingTo: preset, permissionError: null })
     try {
-      const result = await rpc<{ accepted: true; command?: { kind: 'success'; text?: string } }>('session.prompt', {
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text: `/permission ${preset}` }],
-        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      })
-      if (result.command === undefined) throw new Error(get().uiPrefs.language === 'zh' ? '当前主机未识别权限命令。' : 'The host did not recognize the permission command.')
+      clearPermissionConfirmTimer()
+      const execution = await executeCommandLine(sessionId, `/permission ${preset}`)
+      // The Host may broadcast command/run + command/done before returning the
+      // execution receipt. Mark the lifecycle by id as non-conversational and
+      // remove any node that raced ahead of this response.
+      get().suppressCommand(execution.commandId)
+      if (execution.result.kind === 'error') throw new Error(execution.result.text)
       // Do not update the selection optimistically. The pushed permissions
       // projection below is the authoritative confirmation.
+      if (get().permissionSwitchingTo !== preset) return
+      permissionConfirmTimer = setTimeout(() => {
+        void (async () => {
+          try {
+            const page = await rpc<{ projections?: { values?: { permissions?: unknown } } }>('session.history', { sessionId })
+            if (get().activeSessionId !== sessionId || get().permissionSwitchingTo !== preset) return
+            const projection = permissionProjection(page.projections?.values?.permissions)
+            if (projection?.currentValue === preset) {
+              set({ permissions: projection, permissionSwitchingTo: null, permissionError: null })
+              return
+            }
+            set({
+              ...(projection === null ? {} : { permissions: projection }),
+              permissionSwitchingTo: null,
+              permissionError: get().uiPrefs.language === 'zh'
+                ? `权限切换未确认；主机当前值为 ${projection?.currentValue ?? '未知'}。`
+                : `Permission switch was not confirmed; the Host reports ${projection?.currentValue ?? 'an unknown value'}.`,
+            })
+          } catch (error) {
+            if (get().activeSessionId === sessionId && get().permissionSwitchingTo === preset) {
+              set({
+                permissionSwitchingTo: null,
+                permissionError: error instanceof Error ? error.message : String(error),
+              })
+            }
+          } finally {
+            permissionConfirmTimer = null
+          }
+        })()
+      }, PERMISSION_CONFIRM_TIMEOUT_MS)
     } catch (error) {
+      clearPermissionConfirmTimer()
       set({
         permissionSwitchingTo: null,
         permissionError: error instanceof Error ? error.message : String(error),
@@ -235,7 +360,14 @@ export const createComposerSlice: StateCreator<AppStore, [], [], ComposerSlice> 
 
   applyQueueFrame: (frame) => {
     if (frame.type === 'session/projection' && frame.sessionId === get().activeSessionId && frame.key === 'permissions') {
-      set({ permissions: permissionProjection(frame.value), permissionSwitchingTo: null, permissionError: null })
+      const projection = permissionProjection(frame.value)
+      const pending = get().permissionSwitchingTo
+      if (pending !== null && projection?.currentValue === pending) {
+        clearPermissionConfirmTimer()
+        set({ permissions: projection, permissionSwitchingTo: null, permissionError: null })
+      } else {
+        set({ permissions: projection, ...(pending === null ? { permissionError: null } : {}) })
+      }
       return
     }
     if (frame.type !== 'session/queue') return

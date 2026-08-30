@@ -132,6 +132,7 @@ export const createSessionsSlice: StateCreator<AppStore, [], [], SessionsSlice> 
       get().setWorkspaceExpanded(workspace.workspaceId, true)
     }
     await Promise.all([get().loadHistory(id), get().loadModels(id)])
+    void get().loadComposerCatalog(id).catch(() => undefined)
     void get().loadSubagents(id).catch(() => undefined)
   },
 

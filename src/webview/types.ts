@@ -9,6 +9,7 @@ import type {
   ApprovalRequestId,
   AttachmentId,
   CallId,
+  CommandId,
   MessageId,
   SessionId,
 } from '../extension/protocol/brand'
@@ -105,6 +106,26 @@ export interface ContextInjectionNode extends NodeBase {
   text: string
 }
 
+/** Durable slash-command lifecycle folded by commandId. */
+export interface CommandNode extends NodeBase {
+  kind: 'command'
+  commandId: CommandId
+  name: string | null
+  args: string | null
+  outcome: {
+    kind: 'success' | 'error'
+    text?: string
+    sourceEventSeq?: number
+  } | null
+}
+
+/** dsh WebUI's goal-specific visible command-input projection. */
+export interface CommandInputNode extends NodeBase {
+  kind: 'command-input'
+  commandId: CommandId
+  text: string
+}
+
 /**
  * Context compaction marker. Reserved for W3: the vendored event vocabulary
  * signals compaction through surface `replace` ops; the projector materializes
@@ -114,6 +135,12 @@ export interface CompactionNode extends NodeBase {
   kind: 'compaction'
   /** Human-readable summary of what was compacted, when available. */
   summary?: string
+  /** Manual /compact lifecycle folded into this richer checkpoint. */
+  command?: {
+    commandId: CommandId
+    status: 'running' | 'success' | 'error'
+    text?: string
+  }
 }
 
 /**
@@ -156,6 +183,8 @@ export type ConversationNode =
   | ReasoningNode
   | ToolCallNode
   | ContextInjectionNode
+  | CommandNode
+  | CommandInputNode
   | CompactionNode
   | RetryNode
   | ErrorNode

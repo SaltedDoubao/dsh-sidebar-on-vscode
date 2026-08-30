@@ -11,7 +11,7 @@ import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import type { SessionId } from '../../../extension/protocol/brand'
 import { useAppStore } from '../../store'
 import { openFile } from '../../bridge'
-import type { CompactionNode, ContextInjectionNode, ConversationNode, ErrorNode, RetryNode, WorkflowRunNode } from '../../types'
+import type { CommandInputNode, CommandNode, CompactionNode, ContextInjectionNode, ConversationNode, ErrorNode, RetryNode, WorkflowRunNode } from '../../types'
 import type { ConversationMode } from '../../types'
 import { useI18n } from '../../use-i18n'
 import { AssistantBubble, MessageBubble } from './MessageBubble'
@@ -52,8 +52,35 @@ function ContextInjectionRow(props: { node: ContextInjectionNode }): JSX.Element
 function CompactionRow(props: { node: CompactionNode }): JSX.Element {
   const { t } = useI18n()
   return (
-    <div className="marker-row marker-compaction">
+    <div className={`marker-row marker-compaction${props.node.command?.status === 'error' ? ' marker-error' : ''}`}>
       <span aria-hidden>🗜</span> {t('Compacted history{summary}', { summary: props.node.summary !== undefined ? `：${props.node.summary}` : '' })}
+    </div>
+  )
+}
+
+function CommandInputRow({ node }: { node: CommandInputNode }): JSX.Element {
+  return <div className="command-input-row"><code>{node.text}</code></div>
+}
+
+function CommandRow({ node }: { node: CommandNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const { t } = useI18n()
+  const state = node.outcome === null ? 'running' : node.outcome.kind === 'error' ? 'error' : 'ok'
+  const text = node.outcome?.text
+  const summary = node.outcome === null
+    ? t('Running…')
+    : text ?? (node.outcome.kind === 'error' ? t('Command failed') : t('Completed'))
+  const multiline = text?.includes('\n') === true
+  return (
+    <div className="command-card" data-state={state} data-command={node.name ?? ''}>
+      <button type="button" className="command-card-row" onClick={() => multiline && setOpen((value) => !value)} aria-expanded={multiline ? open : undefined}>
+        <span className={`command-card-icon command-card-icon-${state}`} aria-hidden>{state === 'error' ? '●' : '⌘'}</span>
+        <span className="command-card-title">{node.name ?? t('Command')}</span>
+        <span className="command-card-separator" aria-hidden>·</span>
+        <span className="command-card-summary">{summary}</span>
+        {multiline && <span className={`tool-row-chevron${open ? ' tool-row-chevron-open' : ''}`}>›</span>}
+      </button>
+      {open && multiline && <pre className="command-card-body" data-error={state === 'error' || undefined}>{text}</pre>}
     </div>
   )
 }
@@ -120,6 +147,10 @@ export function NodeView(props: { node: ConversationNode }): JSX.Element {
       return <ToolCallRow node={node} />
     case 'context-injection':
       return <ContextInjectionRow node={node} />
+    case 'command-input':
+      return <CommandInputRow node={node} />
+    case 'command':
+      return <CommandRow node={node} />
     case 'compaction':
       return <CompactionRow node={node} />
     case 'retry':
@@ -228,6 +259,7 @@ export function ConversationView({ sessionId, mode }: ConversationViewProps): JS
                   : node.kind === 'assistant-text' ? node.text.slice(0, 100)
                     : node.kind === 'user-message' ? t('User prompt')
                       : node.kind === 'workflow-run' ? `${node.name} · ${node.status}`
+                        : node.kind === 'command' ? `${node.name ?? t('Command')} · ${node.outcome?.kind ?? 'running'}`
                         : ''}
               </span>
             </li>

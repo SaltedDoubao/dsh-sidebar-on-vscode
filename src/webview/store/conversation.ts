@@ -9,7 +9,7 @@
  */
 
 import type { StateCreator } from 'zustand'
-import type { CallId, SessionId } from '../../extension/protocol/brand'
+import type { CallId, CommandId, SessionId } from '../../extension/protocol/brand'
 import type { MuxFrame, ToolEventView } from '../../extension/protocol/events'
 import type { ContentBlock, TokenUsage } from '../../extension/protocol/llm'
 import type {
@@ -29,6 +29,8 @@ import type { JobView } from '../../extension/protocol/views'
 import { rpc } from '../bridge'
 import type {
   AssistantTextNode,
+  CommandInputNode,
+  CommandNode,
   ConversationNode,
   ReasoningNode,
   TodoItem,
@@ -78,6 +80,8 @@ export function findIdeBlock(text: string): { clean: string; hint: IdeBlockHint 
 export interface ConversationSlice {
   /** Current session's render nodes, in arrival order. */
   nodes: ConversationNode[]
+  /** Command lifecycles that are state-only and must not enter the chat surface. */
+  silentCommandIds: ReadonlySet<CommandId>
   /** True when earlier history pages exist (Load older). */
   hasMoreHistory: boolean
   /** Turn lifecycle of the active session. */
@@ -117,6 +121,8 @@ export interface ConversationSlice {
   applyMuxFrame: (frame: MuxFrame) => void
   /** Append an error node (host/agent-error, rpc failures surfaced inline). */
   appendError: (message: string, code?: string) => void
+  /** Hide a state-only command even when its lifecycle arrived before the RPC receipt. */
+  suppressCommand: (commandId: CommandId) => void
   /** Reset all per-session conversation state (on session switch). */
   clearConversation: () => void
 }
@@ -191,12 +197,103 @@ function assistantNodes(
   return out
 }
 
+function commandFromDone(
+  event: Extract<SessionEvent, { type: 'command/done' }>,
+  previous?: CommandNode,
+): CommandNode {
+  return {
+    id: previous?.id ?? `command-${event.data.commandId}`,
+    kind: 'command',
+    seq: previous?.seq ?? event.seq,
+    time: previous?.time ?? event.time,
+    commandId: event.data.commandId,
+    name: previous?.name ?? null,
+    args: previous?.args ?? null,
+    outcome: {
+      kind: event.data.kind,
+      ...(event.data.text === undefined ? {} : { text: event.data.text }),
+      ...(event.data.sourceEventSeq === undefined ? {} : { sourceEventSeq: event.data.sourceEventSeq }),
+    },
+  }
+}
+
+/** WebUI treats permission changes as state mutations, not conversation content. */
+function isSilentCommand(name: string): boolean {
+  return name.toLowerCase() === 'permission'
+}
+
+function withoutSilentCommands(
+  nodes: ConversationNode[],
+  silentCommandIds: ReadonlySet<CommandId>,
+): ConversationNode[] {
+  return nodes.filter((node) =>
+    !((node.kind === 'command' || node.kind === 'command-input') && silentCommandIds.has(node.commandId)),
+  )
+}
+
+/** Reconcile lifecycle pairs split by history pagination and compact nodes. */
+export function normalizeCommandNodes(nodes: ConversationNode[]): ConversationNode[] {
+  const out: ConversationNode[] = []
+  const commandIndexes = new Map<CommandId, number>()
+  for (const node of nodes) {
+    if (node.kind !== 'command') {
+      out.push(node)
+      continue
+    }
+    const previousIndex = commandIndexes.get(node.commandId)
+    if (previousIndex === undefined) {
+      commandIndexes.set(node.commandId, out.length)
+      out.push(node)
+      continue
+    }
+    const previous = out[previousIndex] as CommandNode
+    out[previousIndex] = {
+      ...previous,
+      name: previous.name ?? node.name,
+      args: previous.args ?? node.args,
+      outcome: node.outcome ?? previous.outcome,
+    }
+  }
+
+  const remove = new Set<number>()
+  for (const [commandId, index] of commandIndexes) {
+    const command = out[index] as CommandNode
+    const source = command.outcome?.sourceEventSeq
+    // sourceEventSeq identifies the richer authoritative event. This also
+    // handles a history window whose command/run fell outside the page, so the
+    // done-only node has no command name to inspect.
+    if (source === undefined) continue
+    const compactIndex = out.findIndex((node) => node.kind === 'compaction' && node.seq === source)
+    if (compactIndex < 0) continue
+    const compact = out[compactIndex]
+    if (compact?.kind !== 'compaction') continue
+    out[compactIndex] = {
+      ...compact,
+      command: {
+        commandId,
+        status: command.outcome?.kind ?? 'running',
+        ...(command.outcome?.text === undefined ? {} : { text: command.outcome.text }),
+      },
+    }
+    remove.add(index)
+  }
+  return out.filter((_node, index) => !remove.has(index))
+}
+
 /** Project one session event into node mutations, applied against `nodes`. */
-function projectEvent(nodes: ConversationNode[], event: SessionEvent, view?: ToolEventView): ConversationNode[] {
+function projectEvent(
+  nodes: ConversationNode[],
+  event: SessionEvent,
+  view?: ToolEventView,
+  silentCommandIds: ReadonlySet<CommandId> = new Set(),
+): ConversationNode[] {
   switch (event.type) {
     case 'user/message': {
       const msg = event.data
       if (msg.source.kind === 'plugin') {
+        // A compact replacement checkpoint is rendered by the richer
+        // compaction/summary node, not as an injected-context row.
+        if (msg.source.plugin === 'compact' && typeof event.surfaceOp === 'object') return nodes
         return [
           ...nodes,
           {
@@ -302,6 +399,51 @@ function projectEvent(nodes: ConversationNode[], event: SessionEvent, view?: Too
       }
       return [...nodes.slice(0, idx), next, ...nodes.slice(idx + 1)]
     }
+    case 'command/run': {
+      if (silentCommandIds.has(event.data.commandId) || isSilentCommand(event.data.name)) return nodes
+      const command: CommandNode = {
+        id: `command-${event.data.commandId}`,
+        kind: 'command',
+        seq: event.seq,
+        time: event.time,
+        commandId: event.data.commandId,
+        name: event.data.name,
+        args: event.data.args ?? null,
+        outcome: null,
+      }
+      const input: CommandInputNode | null = event.data.name === 'goal'
+        ? {
+            id: `command-input-${event.data.commandId}`,
+            kind: 'command-input',
+            seq: event.seq,
+            time: event.time,
+            commandId: event.data.commandId,
+            text: `/${event.data.name}${(event.data.args ?? '').trimEnd()}`,
+          }
+        : null
+      return normalizeCommandNodes([...nodes, ...(input === null ? [] : [input]), command])
+    }
+    case 'command/done': {
+      if (silentCommandIds.has(event.data.commandId)) return nodes
+      const idx = nodes.findIndex((node) => node.kind === 'command' && node.commandId === event.data.commandId)
+      const previous = idx < 0 ? undefined : nodes[idx] as CommandNode
+      const command = commandFromDone(event, previous)
+      const next = idx < 0
+        ? [...nodes, command]
+        : [...nodes.slice(0, idx), command, ...nodes.slice(idx + 1)]
+      return normalizeCommandNodes(next)
+    }
+    case 'compaction/summary': {
+      const shadowed = new Set(event.data.shadowedSeqs)
+      const retained = nodes.filter((node) => !shadowed.has(node.seq))
+      return normalizeCommandNodes([...retained, {
+        id: `compaction-${event.data.compactionId}`,
+        kind: 'compaction',
+        seq: event.seq,
+        time: event.time,
+        summary: blocksToText(event.data.summary),
+      }])
+    }
     case 'tool-workflow/run-start':
       return [...nodes, {
         id: `workflow-${event.data.runId}`,
@@ -356,6 +498,7 @@ function projectEvent(nodes: ConversationNode[], event: SessionEvent, view?: Too
 /** Fold one history page into projected conversation state. */
 function projectPage(entries: HistoryResult['events']): {
   nodes: ConversationNode[]
+  silentCommandIds: ReadonlySet<CommandId>
   stats: TurnStats | null
   todos: TodoItem[]
   lastTurnMs: number | null
@@ -363,13 +506,21 @@ function projectPage(entries: HistoryResult['events']): {
   runningSince: number | null
 } {
   let nodes: ConversationNode[] = []
+  // Pre-scan so a page remains silent even if it contains only a reordered
+  // done/run pair. The set is also merged across pagination boundaries.
+  const silentCommandIds = new Set<CommandId>()
+  for (const entry of entries) {
+    if (entry.event.type === 'command/run' && isSilentCommand(entry.event.data.name)) {
+      silentCommandIds.add(entry.event.data.commandId)
+    }
+  }
   let stats: TurnStats | null = null
   let todos: TodoItem[] = []
   let lastTurnMs: number | null = null
   const turnStarts = new Map<number, number>()
   const endedTurns = new Set<number>()
   for (const entry of entries) {
-    nodes = projectEvent(nodes, entry.event, entry.view)
+    nodes = projectEvent(nodes, entry.event, entry.view, silentCommandIds)
     const event = entry.event
     if (event.type === 'turn/start') turnStarts.set(event.data.turn, event.time)
     if (event.type === 'turn/end') {
@@ -389,11 +540,12 @@ function projectPage(entries: HistoryResult['events']): {
   for (const [turn, start] of turnStarts) {
     if (!endedTurns.has(turn) && (runningSince === null || start > runningSince)) runningSince = start
   }
-  return { nodes, stats, todos, lastTurnMs, runningSince }
+  return { nodes: normalizeCommandNodes(nodes), silentCommandIds, stats, todos, lastTurnMs, runningSince }
 }
 
 export const createConversationSlice: StateCreator<AppStore, [], [], ConversationSlice> = (set, get) => ({
   nodes: [],
+  silentCommandIds: new Set(),
   hasMoreHistory: false,
   turnStatus: 'idle',
   turnStartedAt: null,
@@ -413,7 +565,7 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
     // A session switch may have happened while the page was in flight; a stale
     // page must not overwrite the current session's nodes or projections.
     if (get().activeSessionId !== sessionId) return
-    const { nodes, stats, todos, lastTurnMs, runningSince } = projectPage(page.events)
+    const { nodes, silentCommandIds, stats, todos, lastTurnMs, runningSince } = projectPage(page.events)
     // The tail page carries the projection baseline (one consistent cut);
     // a key absent from values means the capability is absent on the host.
     const values = page.projections?.values
@@ -426,6 +578,7 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
     const resumed = sessionRunning && runningSince !== null
     set({
       nodes,
+      silentCommandIds,
       stats,
       todos,
       lastTurnMs,
@@ -450,8 +603,13 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
     try {
       const page = await rpc<HistoryResult>('session.history', { sessionId, beforeSeq })
       const older = projectPage(page.events)
+      const silentCommandIds = new Set([...get().silentCommandIds, ...older.silentCommandIds])
       set({
-        nodes: [...older.nodes, ...get().nodes],
+        nodes: withoutSilentCommands(
+          normalizeCommandNodes([...older.nodes, ...get().nodes]),
+          silentCommandIds,
+        ),
+        silentCommandIds,
         hasMoreHistory: page.hasMore,
         // Earlier pages only prepend content; stats/todos/lastTurnMs describe
         // the latest turn and the four projections stay owned by the tail
@@ -490,7 +648,14 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
     switch (frame.type) {
       case 'session/event': {
         const event = frame.event
-        set({ nodes: projectEvent(get().nodes, event, frame.view) })
+        const silentCommandIds = new Set(get().silentCommandIds)
+        if (event.type === 'command/run' && isSilentCommand(event.data.name)) {
+          silentCommandIds.add(event.data.commandId)
+        }
+        set({
+          nodes: projectEvent(get().nodes, event, frame.view, silentCommandIds),
+          silentCommandIds,
+        })
         if (event.type === 'turn/start') {
           set({ turnStatus: 'running', turnStartedAt: event.time, stats: null, lastTurnMs: null })
         } else if (event.type === 'turn/end') {
@@ -552,10 +717,20 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
     })
   },
 
+  suppressCommand: (commandId) => {
+    const silentCommandIds = new Set(get().silentCommandIds)
+    silentCommandIds.add(commandId)
+    set({
+      silentCommandIds,
+      nodes: withoutSilentCommands(get().nodes, silentCommandIds),
+    })
+  },
+
   clearConversation: () => {
     get().resetGoal()
     set({
       nodes: [],
+      silentCommandIds: new Set(),
       hasMoreHistory: false,
       turnStatus: 'idle',
       turnStartedAt: null,
@@ -568,6 +743,9 @@ export const createConversationSlice: StateCreator<AppStore, [], [], Conversatio
       permissions: null,
       permissionSwitchingTo: null,
       permissionError: null,
+      commands: [],
+      skills: [],
+      catalogSessionId: null,
       lastTurnMs: null,
       loadingOlder: false,
       activeJobs: [],

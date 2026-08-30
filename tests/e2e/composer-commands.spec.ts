@@ -3,9 +3,7 @@
  *   1. Slash commands: typing `/` pops the built-in host command suggestions
  *      (/goal, /compact, /plan) above the skill catalog; Escape dismisses the
  *      popup; picking inserts the token; sending a `/`-line delivers it as
- *      the user message — a host with the command registry executes it
- *      natively (never reaching the model), older hosts hand it to the model;
- *      either way the line must never vanish. Deterministic.
+ *      a durable command-input/result pair. It never reaches the model.
  *   2. Esc interrupt (live): with a real turn streaming, Escape cancels the
  *      turn (same action as the stop button). Skipped when the model does not
  *      start generating within the window (natural-trigger resilience, per
@@ -41,13 +39,12 @@ test('slash popup lists host commands, Escape dismisses, picking inserts, sendin
   const input = page.locator('.composer-input')
   await expect(input).toBeVisible()
 
-  // Typing "/" pops the suggestion list with the built-in commands first.
+  // Typing "/" pops the Host-authoritative command directory.
   await input.fill('/')
   const popup = page.locator('.composer-suggest')
   await expect(popup).toBeVisible()
-  await expect(page.locator('.composer-suggest-label').first()).toHaveText('/goal', { timeout: 5_000 })
   const labels = await page.locator('.composer-suggest-label').allTextContents()
-  expect(labels.slice(0, 3)).toEqual(['/goal', '/compact', '/plan'])
+  expect(labels).toEqual(expect.arrayContaining(['/goal', '/compact', '/plan']))
 
   // Escape dismisses the popup without touching the draft.
   await input.press('Escape')
@@ -62,12 +59,39 @@ test('slash popup lists host commands, Escape dismisses, picking inserts, sendin
   await input.press('Enter')
   await expect(input).toHaveValue('/goal ')
 
-  // Sending the slash line delivers it as the user message (never swallowed;
-  // a host with the command registry executes it instead of the model).
+  // Sending executes through commands/execute. /goal owns the only
+  // user-style command-input projection; the generic result is a command card.
   await input.fill('/goal 完成斜杠命令的 E2E 验证')
   await input.press('Enter')
   await expect(input).toHaveValue('')
-  await expect(page.locator('.msg-user').first()).toContainText('/goal 完成斜杠命令的 E2E 验证', { timeout: 10_000 })
+  await expect(page.locator('.command-input-row').last()).toContainText('/goal 完成斜杠命令的 E2E 验证', { timeout: 10_000 })
+  await expect(page.locator('.command-card[data-command="goal"]').last()).toBeVisible()
+})
+
+test('real permission switch uses the command plane and waits for the projection', async ({ page, harness }) => {
+  await harness.createSession(harness.workspacePath, 'PERMISSION-CMD')
+  await openApp(page, harness)
+  await page.locator('.session-row', { hasText: 'PERMISSION-CMD' }).click()
+
+  const permission = page.locator('.permission-trigger')
+  await expect(permission).toBeEnabled()
+  await permission.click()
+  const readOnly = page.locator('.permission-menu .composer-menu-item').first()
+  await expect(readOnly).toContainText('只读')
+  await readOnly.click()
+
+  await expect(permission).toContainText('只读', { timeout: 10_000 })
+  await expect(page.locator('.command-card[data-command="permission"]')).toHaveCount(0)
+  await expect(page.locator('.msg-user', { hasText: '/permission' })).toHaveCount(0)
+
+  // The lifecycle is durable in the Host log, but remains absent when the
+  // conversation is reconstructed from history after a Webview reload.
+  await page.reload()
+  await expect(page.locator('.chat-list')).toBeVisible()
+  await page.locator('.session-row', { hasText: 'PERMISSION-CMD' }).click()
+  await expect(page.locator('.permission-trigger')).toContainText('只读', { timeout: 10_000 })
+  await expect(page.locator('.command-card[data-command="permission"]')).toHaveCount(0)
+  await expect(page.locator('.msg-user', { hasText: '/permission' })).toHaveCount(0)
 })
 
 test('Escape interrupts the running turn (live)', async ({ page, harness }, testInfo) => {

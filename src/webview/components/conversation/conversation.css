@@ -911,6 +911,88 @@
   font-size: 0.85em;
 }
 
+/* Durable slash-command lifecycle, aligned with the dsh WebUI row/card. */
+.command-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.command-card[data-state='running']::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: -300px;
+  width: 300px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--dsh-bg-raised) 70%, transparent), transparent);
+  animation: command-row-sweep 2.6s ease-out infinite;
+}
+
+@keyframes command-row-sweep {
+  90%, 100% { left: 100%; }
+}
+
+.command-card-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 28px;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsh-fg);
+  text-align: left;
+}
+
+.command-card-icon { width: 16px; color: var(--dsh-fg-muted); }
+.command-card-icon-error,
+.command-card[data-state='error'] .command-card-summary { color: var(--dsh-danger); }
+.command-card-title { flex: none; }
+.command-card-separator { color: var(--dsh-fg-muted); }
+.command-card-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--dsh-fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-card-body {
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 0 4px 22px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsh-border);
+  border-radius: var(--dsh-radius);
+  background: var(--dsh-bg-raised);
+  color: var(--dsh-fg);
+  white-space: pre-wrap;
+}
+
+.command-card-body[data-error] { color: var(--dsh-danger); }
+
+.command-input-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.command-input-row code {
+  max-width: min(85%, 640px);
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: 14px/22px var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-card[data-state='running']::after { animation: none; }
+}
+
 .turn-status-line {
   display: flex;
   align-items: center;

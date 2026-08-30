@@ -126,6 +126,7 @@ export function ComposerCard(): JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [ideContext, setIdeContext] = useState<IdeContextMeta | null>(null)
   const toastSeq = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -139,7 +140,7 @@ export function ComposerCard(): JSX.Element {
   const permissionLocked = running || (!futureSessionPermission && permissions === null)
   // Sending without a session auto-creates one (sendPrompt handles it), so the
   // input is always usable once the host is up.
-  const canSend = draft.trim() !== '' || attachments.length > 0
+  const canSend = !submitting && (draft.trim() !== '' || attachments.length > 0)
   // Takeover semantics: a pending overlay replaces the whole input area.
   const overlayActive = pendingApproval !== null || pendingQuestion !== null || planReview !== null
 
@@ -278,15 +279,22 @@ export function ComposerCard(): JSX.Element {
     if (!canSend) return
     const text = draft.trim()
     const sent = attachments
-    for (const a of sent) {
-      if (a.previewUrl !== undefined) URL.revokeObjectURL(a.previewUrl)
-    }
-    setDraft('')
-    setAttachments([])
+    const sentIds = new Set(sent.map((attachment) => attachment.id))
+    setSubmitting(true)
     // mode 'queue' in sendPrompt: a running turn queues the message server-side.
-    void sendPrompt(text, sent).catch((err: unknown) => {
-      showToast(err instanceof Error ? err.message : String(err))
-    })
+    void sendPrompt(text, sent)
+      .then(() => {
+        setDraft((current) => current.trim() === text ? '' : current)
+        setAttachments((current) => current.filter((attachment) => {
+          if (!sentIds.has(attachment.id)) return true
+          if (attachment.previewUrl !== undefined) URL.revokeObjectURL(attachment.previewUrl)
+          return false
+        }))
+      })
+      .catch((err: unknown) => {
+        showToast(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => setSubmitting(false))
   }
 
   const onEditQueueItem = async (id: MessageId, text: string): Promise<void> => {
@@ -331,7 +339,7 @@ export function ComposerCard(): JSX.Element {
               onSend={send}
               onStop={() => void cancel()}
               running={running}
-              disabled={false}
+              disabled={submitting}
               sessionId={activeSessionId}
               onPasteFiles={intakeFiles}
             />
@@ -343,6 +351,7 @@ export function ComposerCard(): JSX.Element {
                   data-composer-tool="attach"
                   aria-label={t('Add image attachment')}
                   title={t('Add image attachment')}
+                  disabled={submitting}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
