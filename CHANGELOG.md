@@ -5,6 +5,15 @@ All notable changes to the "dsh-sidebar-on-vscode" extension will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-30
+
+### Fixed
+
+- **Permission Preset Switching**:
+  - Fixed permission preset switching by routing preset changes through the native command plane (`/permission <preset>`) and awaiting authoritative Host projection confirmation.
+  - Suppressed non-conversational permission command lifecycles from leaking into the chat stream as raw text messages.
+  - Added fallback timeout confirmation against session history projections to prevent indefinite switching states.
+
 ## [1.1.1] - 2026-08-29
 
 ### Documentation
